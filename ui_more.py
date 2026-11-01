@@ -311,6 +311,23 @@ HOWTO = {
          "background and tell you when they are done."),
         ("7. When you are done", "Close the tool: the connection is closed with it."),
     ]),
+    "localsend": ("Sending files to nearby devices", [
+        ("1. What this is", "Foldwise speaks the LocalSend protocol, so it can exchange files directly with the free LocalSend app on Android, iPhone, "
+         "Windows, Mac and Linux (and with another Foldwise). Everything stays on your own network: nothing goes over the internet."),
+        ("2. Install LocalSend on the other device", "Get LocalSend from your phone's app store or from localsend.org and open it. Both devices must be on the "
+         "same Wi-Fi or network."),
+        ("3. Sending from here", "Press 'Search again' until the device shows up in the list. If it does not, press 'Add by address…' and type the IP "
+         "address that LocalSend shows on the other device. Pick the device, choose what to send (Files…, A folder…, or 'Selected in Foldwise') "
+         "and press 'Send to the selected device'. The other device asks to accept; you can also right-click files in Foldwise > "
+         "'Send to a nearby device…'."),
+        ("4. Receiving here", "Tick 'Receive files from nearby devices'. Other devices can then see this PC under the name you chose. Every "
+         "incoming transfer asks you to Accept or Decline first, and the files are saved in the folder shown (a 'Foldwise received' folder in your Downloads "
+         "unless you change it). Untick it and this PC is invisible again."),
+        ("5. Windows Firewall", "The first time you turn receiving on, Windows may ask to allow Foldwise on the network. Choose 'Private networks' "
+         "only. If other devices still cannot see this PC, use 'Add by address…' on them with this PC's address shown on the tool."),
+        ("6. Good to know", "PIN-protected receivers are not supported yet. Transfers can be cancelled from either side. Files that already exist "
+         "are never overwritten: the new one gets (1) added to its name."),
+    ]),
     "notify": ("Getting alerts on your phone", [
         ("1. What you will get", "Foldwise can send its weekly check-up and malware warnings to your phone as a short message. Only that "
          "message text is sent, never file names or contents of your files."),

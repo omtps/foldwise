@@ -274,6 +274,8 @@ def popup(A, e):
         m.add_command(label="Delete", command=A.do_delete)
         m.add_separator()
         m.add_command(label="Compress to ZIP", command=A.compress)
+        if not any(X.zip_is_virtual(r[1]) for r in s):
+            m.add_command(label="Send to a nearby device…", command=lambda: A.open_localsend([r[1] for r in s]))
         if len(s) == 1 and not s[0][4]:
             m.add_command(label="Checksum\u2026", command=A.open_checksum)
         if any(not r[4] and os.path.splitext(r[0])[1][1:].lower() in IMG_EXTS for r in s):

@@ -11,7 +11,9 @@ A file manager, instant search and PC health center for Windows 10/11, in one sm
 - **Cleaning up:** smart disk cleaner with protected folders, duplicate finder, largest files, empty folders, look-alike photos, disk usage map, folder size history and smart collections.
 - **PC health center:** health score, disks and SMART, memory and CPU, startup programs, network and speed test, security audit, Windows Update and driver checks, trends over time and an HTML report.
 - **Security:** Windows Defender scans plus a deep check for start-up tricks, fake file names and broken signatures, with a restorable quarantine; encrypted vaults (AES-256) for folders; integrity fingerprints that reveal changed or corrupted files.
+- **Fast file transfers:** copies use Windows' own copy routine and many small files in parallel; moves to another drive show progress and can be cancelled.
 - **Backups and sync:** scheduled backups that never delete, two-way folder sync with safety copies, FTP, SFTP and WebDAV browsing.
+- **Nearby devices:** send files to and receive from phones and PCs running the free LocalSend app (or another Foldwise) over your own network, with an accept prompt for everything incoming.
 - **Photos and media:** EXIF details and metadata removal, image convert and resize, media properties, quick look for documents, spreadsheets and code.
 - **Made to be personal:** Adwaita-style dark and light themes that can follow Windows, accent colours, fonts, date formats, a setup wizard that starts with almost everything off, and a guided tour that points at the real windows.
 - **A little fun:** mini-games to play while a slow tool works.

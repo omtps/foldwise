@@ -538,36 +538,143 @@ def tree_size(path):
     return total
 
 
-def transfer(paths, folder, move, progress=None, cancel=lambda: False, resolve=None):
+def _long_path(p):
+    """\\?\\ prefix so paths over 260 characters work (Windows only)."""
+    p = os.path.abspath(p)
+    if os.name != "nt" or p.startswith("\\\\?\\"):
+        return p
+    return "\\\\?\\UNC\\" + p[2:] if p.startswith("\\\\") else "\\\\?\\" + p
+
+
+def copy_file_fast(src, dst, on_bytes=None, cancel=lambda: False, chunk=8 << 20):
+    """Copy one file with Windows' own copy routine (CopyFileExW): big internal buffers, server-side copy on network shares, block
+    cloning on ReFS, security and timestamps kept. Never overwrites. Falls back to a plain 8 MB-chunk loop where that is not available.
+    on_bytes(n) is told about every n new bytes; raises Cancelled when cancel() turns true (the half-written copy is removed)."""
+    if os.name == "nt":
+        try:
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            prog_t = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong,
+                                        ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+            seen = [0]
+            stopped = [False]
+
+            def cb(total_size, transferred, stream_size, stream_done, stream_no, reason, h_src, h_dst, data):
+                if on_bytes and transferred > seen[0]:
+                    on_bytes(transferred - seen[0])
+                    seen[0] = transferred
+                if cancel():
+                    stopped[0] = True
+                    return 1  # PROGRESS_CANCEL
+                return 0
+            cbf = prog_t(cb)
+            k32.CopyFileExW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, prog_t, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong]
+            k32.CopyFileExW.restype = ctypes.c_int
+            if k32.CopyFileExW(_long_path(src), _long_path(dst), cbf, None, None, 1):  # 1 = fail if the destination exists
+                return
+            err = ctypes.get_last_error()
+            if stopped[0] or err == 1235:  # ERROR_REQUEST_ABORTED
+                if os.path.exists(dst):
+                    try:
+                        os.remove(dst)
+                    except OSError:
+                        pass
+                raise Cancelled()
+            if err in (80, 183):  # the destination exists: never overwrite
+                raise FileExistsError(dst)
+            if err in (2, 3, 5, 32):  # missing / access denied / in use: the plain loop would fail the same way, report it properly
+                raise ctypes.WinError(err)
+            # anything else (an odd file system): try the plain loop below
+        except (AttributeError, OSError) as e:
+            if isinstance(e, (FileExistsError, FileNotFoundError, PermissionError)):
+                raise
+            if not isinstance(e, OSError) or getattr(e, "winerror", None) in (2, 3, 5, 32):
+                raise
+    with open(src, "rb") as fi, open(dst, "xb") as fo:
+        while True:
+            if cancel():
+                fo.close()
+                os.remove(dst)
+                raise Cancelled()
+            b = fi.read(chunk)
+            if not b:
+                break
+            fo.write(b)
+            if on_bytes:
+                on_bytes(len(b))
+    shutil.copystat(src, dst)
+
+
+def _same_volume(a, b):
+    """True when moving a to b is a rename (same drive / same share)."""
+    try:
+        return os.path.splitdrive(os.path.abspath(a))[0].lower() == os.path.splitdrive(os.path.abspath(b))[0].lower()
+    except (OSError, ValueError):
+        return False
+
+
+def transfer(paths, folder, move, progress=None, cancel=lambda: False, resolve=None, workers=4):
     """Copy/move into `folder`. Returns [(src, dst)] that completed. progress(done, total, name).
     resolve(src, existing) -> 'replace' | 'keep' | 'skip' | 'cancel' is asked when the name is already taken
-    (for 'replace' the callback must already have removed the existing item)."""
-    total = 0 if move else sum(tree_size(p) for p in paths)
+    (for 'replace' the callback must already have removed the existing item).
+    Files are copied with Windows' own routine and many small files at once (`workers` threads). A move to another drive is a fast
+    copy followed by removing the original only after the whole item was copied; a move on the same drive is a rename."""
+    renames = {p: move and _same_volume(p, folder) for p in paths}
+    total = sum(tree_size(p) for p in paths if not renames[p])
     state, pairs = {"done": 0, "t": 0.0}, []
+    lock = threading.Lock()
+
+    def add_bytes(n, name):
+        with lock:
+            state["done"] += n
+            now = time.time()
+            if progress and now - state["t"] > 0.1:
+                state["t"] = now
+                progress(state["done"], total, name)
 
     def copy_file(src, dst):
-        with open(src, "rb") as fi, open(dst, "wb") as fo:
-            while True:
-                if cancel():
-                    raise Cancelled()
-                b = fi.read(1 << 20)
-                if not b:
-                    break
-                fo.write(b)
-                state["done"] += len(b)
-                now = time.time()
-                if progress and now - state["t"] > 0.1:
-                    state["t"] = now
-                    progress(state["done"], total, os.path.basename(src))
-        shutil.copystat(src, dst)
+        copy_file_fast(src, dst, lambda n: add_bytes(n, os.path.basename(src)), cancel)
 
     def copy_tree(src, dst):
-        os.makedirs(dst)
-        for e in os.scandir(src):
-            if e.is_dir(follow_symlinks=False):
-                copy_tree(e.path, os.path.join(dst, e.name))
-            else:
-                copy_file(e.path, os.path.join(dst, e.name))
+        files = []  # (src, dst, size)
+
+        def walk(s_, d_):
+            os.makedirs(d_)
+            for e in os.scandir(s_):
+                if e.is_dir(follow_symlinks=False):
+                    walk(e.path, os.path.join(d_, e.name))
+                else:
+                    try:
+                        files.append((e.path, os.path.join(d_, e.name), e.stat().st_size))
+                    except OSError:
+                        files.append((e.path, os.path.join(d_, e.name), 0))
+        walk(src, dst)
+        small = [f for f in files if f[2] < (8 << 20)]
+        big = [f for f in files if f[2] >= (8 << 20)]
+        failed = []
+
+        def one(f):
+            if failed or cancel():
+                return
+            try:
+                copy_file(f[0], f[1])
+            except BaseException as e:  # noqa - carry Cancelled / OSError to the caller thread
+                failed.append(e)
+        if len(small) > 1 and workers > 1:
+            with ThreadPoolExecutor(min(workers, len(small))) as ex:
+                list(ex.map(one, small))
+        else:
+            for f in small:
+                one(f)
+        for f in big:  # big files one at a time: they already use the whole disk
+            one(f)
+        if failed:
+            raise failed[0]
+        if cancel():
+            raise Cancelled()
+        try:
+            shutil.copystat(src, dst)
+        except OSError:
+            pass
 
     nf = os.path.normcase(folder)
     for p in paths:
@@ -595,12 +702,15 @@ def transfer(paths, folder, move, progress=None, cancel=lambda: False, resolve=N
         if dst is None:
             dst = _unique(folder, os.path.basename(p))
         try:
-            if move:
+            if renames[p]:
                 shutil.move(p, dst)
-            elif os.path.isdir(p):
-                copy_tree(p, dst)
             else:
-                copy_file(p, dst)
+                if os.path.isdir(p):
+                    copy_tree(p, dst)
+                else:
+                    copy_file(p, dst)
+                if move:  # another drive: the original goes only after everything arrived
+                    (shutil.rmtree if os.path.isdir(p) else os.remove)(p)
         except Cancelled:
             shutil.rmtree(dst, ignore_errors=True) if os.path.isdir(dst) else (os.path.exists(dst) and os.remove(dst))
             raise
