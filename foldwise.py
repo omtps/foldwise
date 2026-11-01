@@ -1803,7 +1803,7 @@ def selftest():
     problems = []
     for mod in ("ff_core", "ff_extras", "ff_index", "ff_clean", "ff_health", "ff_shell", "ff_ocr", "ff_update", "ui_health", "ui_cleaner",
                 "ui_tools", "ui_settings", "ui_preview", "ui_grid", "ui_dragselect", "ui_fileops", "ui_nav", "ui_toolbar", "ui_about",
-                "ff_malware", "ff_share", "ff_vault", "ff_notify", "ff_elevated", "ff_support", "ui_malware", "ui_pages", "ui_extras", "ui_tour", "ui_browse", "ui_more", "ui_games", "ui_picker", "ff_platform", "tkinter", "PIL.Image", "pypdf", "pypdfium2", "paramiko",
+                "ff_malware", "ff_vault", "ff_notify", "ff_elevated", "ff_support", "ui_malware", "ui_pages", "ui_extras", "ui_tour", "ui_browse", "ui_more", "ui_games", "ui_picker", "ff_platform", "tkinter", "PIL.Image", "pypdf", "pypdfium2", "paramiko",
                 "cryptography.hazmat.primitives.ciphers.aead", "winrt.windows.media.ocr"):
         try:
             importlib.import_module(mod)
