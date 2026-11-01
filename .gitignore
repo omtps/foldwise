@@ -18,3 +18,7 @@ portable.flag
 # private working notes
 CLAUDE.md
 CHANGELOG-FileFinder-history.md
+
+# development material (tests, release tools) stays on the developer's PC
+tests/
+tools/
