@@ -118,7 +118,7 @@ class Match:
     name = "Match"
     hint = "Turn two cards at a time and find all 6 pairs in as few moves as you can."
     higher_is_better = False
-    COLS, CW, CH, GAP = 6, 62, 84, 10
+    COLS, CW, CH, GAP = 6, 62, 70, 10
 
     def __init__(self, rng=None):
         self.rng = rng or random.Random()
@@ -160,14 +160,14 @@ class Match:
         self.pending, self.up = None, []
 
     def origin(self):
-        return (W - (self.COLS * self.CW + (self.COLS - 1) * self.GAP)) / 2, 40
+        return (W - (self.COLS * self.CW + (self.COLS - 1) * self.GAP)) / 2, 44
 
     def cell_rect(self, i):
         ox, oy = self.origin()
         c, r = i % self.COLS, i // self.COLS
         x = ox + c * (self.CW + self.GAP)
-        y = oy + r * (self.CH + self.GAP) - (0 if r == 0 else 8)
-        return x, y, x + self.CW, y + self.CH - 20
+        y = oy + r * (self.CH + self.GAP)
+        return x, y, x + self.CW, y + self.CH
 
     def cell_at(self, x, y):
         for i in range(12):
@@ -210,7 +210,7 @@ def _shape(cv, k, cx, cy, r, color):
         cv.create_polygon(*pts, fill=color, outline="")
 
 
-def draw(cv, g):
+def draw(cv, g, mode="play"):
     cv.delete("all")
     if isinstance(g, Catcher):
         for x, y, _v, bug, c in g.items:
@@ -245,6 +245,10 @@ def draw(cv, g):
                 cv.create_rectangle(x0, y0, x1, y1, fill=T["raised"] if g.state[i] == 1 else T["bg"], outline=T["line"])
                 _shape(cv, g.cards[i], (x0 + x1) / 2, (y0 + y1) / 2, 14, SHAPES[g.cards[i]])
         cv.create_text(10, 8, anchor="nw", fill=T["fg"], font=("Segoe UI", 12, "bold"), text=f"{g.moves} moves")
+    if mode in ("ready", "paused") and not g.over:
+        cv.create_rectangle(W / 2 - 130, H / 2 - 30, W / 2 + 130, H / 2 + 30, fill=T["panel"], outline=T["line"])
+        cv.create_text(W / 2, H / 2 - 9, fill=T["fg"], font=("Segoe UI", 13, "bold"), text="Click to start" if mode == "ready" else "Paused")
+        cv.create_text(W / 2, H / 2 + 14, fill=T["muted"], font=("Segoe UI", 10), text="" if mode == "ready" else "Move the mouse back to go on")
     if g.over:
         cv.create_rectangle(W / 2 - 120, H / 2 - 34, W / 2 + 120, H / 2 + 34, fill=T["panel"], outline=T["line"])
         cv.create_text(W / 2, H / 2 - 12, fill=T["fg"], font=("Segoe UI", 13, "bold"),
@@ -254,13 +258,21 @@ def draw(cv, g):
 
 # ------------------------------------------------------------------------------------------------ the panel
 class GamePanel(tk.Frame):
-    def __init__(self, parent, A, on_minimize=None, on_close=None):
+    """A small floating game window. A game starts on the first click, pauses when the pointer leaves it or the panel was hidden, can be
+    dragged by its title bar and keeps its state while you move between tools."""
+
+    def __init__(self, parent, A, on_minimize=None, on_close=None, floating=True):
         super().__init__(parent, bg=T["raised"], highlightthickness=1, highlightbackground=T["line"])
         self.A = A
+        self.floating = floating
         self.games = {cls.name: cls() for cls in GAMES}
         self.game = self.games["Catch"]
+        self.started = {n: False for n in self.games}
+        self.paused = False
         self._scored = {}
-        head = tk.Frame(self, bg=T["raised"])
+        self._was_hidden = False
+        self._resolve_job = None
+        self.head = head = tk.Frame(self, bg=T["raised"], cursor="fleur" if floating else "")
         head.pack(fill="x", padx=8, pady=(6, 2))
         self.tabs = {}
         for name in self.games:
@@ -278,12 +290,20 @@ class GamePanel(tk.Frame):
             m = tk.Label(head, text="–", bg=T["raised"], fg=T["muted"], cursor="hand2", padx=6)
             m.pack(side="right")
             m.bind("<Button-1>", lambda e: on_minimize())
+        if floating:  # drag the panel by its title bar so it never has to cover what you need
+            for w in (head, self.info):
+                w.bind("<ButtonPress-1>", self._drag_start)
+                w.bind("<B1-Motion>", self._drag_move)
         self.note = tk.Label(self, bg=T["raised"], fg=T["muted"], font=("Segoe UI", 9), anchor="w", wraplength=W)
         self.note.pack(fill="x", padx=10)
         self.cv = tk.Canvas(self, width=W, height=H, bg=T["bg"], highlightthickness=0, cursor="hand2")
         self.cv.pack(padx=8, pady=(2, 8))
         self.cv.bind("<Motion>", self._motion)
+        self.cv.bind("<Enter>", self._enter)
+        self.cv.bind("<Leave>", self._leave)
         self.cv.bind("<Button-1>", self._click)
+        for w in (self.cv, self, head):  # the wheel must not scroll the tool page behind the game
+            w.bind("<MouseWheel>", lambda e: "break")
         for k, d in (("<Left>", -1), ("<Right>", 1), ("a", -1), ("d", 1)):
             self.cv.bind(k, lambda e, d=d: self._key(d))
         self.cv.bind("<space>", lambda e: self._click(e))
@@ -292,6 +312,17 @@ class GamePanel(tk.Frame):
         self.pick("Catch")
         self._tick()
 
+    # ---- dragging
+    def _drag_start(self, e):
+        self._drag = (e.x_root - self.winfo_x(), e.y_root - self.winfo_y())
+
+    def _drag_move(self, e):
+        host = self.master
+        nx = max(0, min(host.winfo_width() - self.winfo_width(), e.x_root - self._drag[0]))
+        ny = max(0, min(host.winfo_height() - self.winfo_height(), e.y_root - self._drag[1]))
+        self.place(relx=0, rely=0, anchor="nw", x=nx, y=ny)
+
+    # ---- games
     def best(self, name):
         return (self.A.cfg.get("game_best") or {}).get(name)
 
@@ -300,31 +331,61 @@ class GamePanel(tk.Frame):
         for n, b in self.tabs.items():
             b.configure(fg=T["fg"] if n == name else T["muted"])
         self.note.configure(text=self.game.hint, fg=T["muted"])
+        if isinstance(self.game, Match):
+            self.started[name] = True  # no clock to wait for
         self._update_info()
+
+    def reset_note(self):
+        self.note.configure(text=self.game.hint, fg=T["muted"])
 
     def _update_info(self):
         b = self.best(self.game.name)
         self.info.configure(text=f"best: {b}" if b is not None else "")
 
+    def _running(self):
+        g = self.game
+        return self.started[g.name] and not self.paused and not g.over
+
+    def _enter(self, e):
+        self.paused = False
+
+    def _leave(self, e):
+        if self.started[self.game.name] and not self.game.over and not isinstance(self.game, Match):
+            self.paused = True
+
     def _motion(self, e):
-        if isinstance(self.game, Catcher):
+        self.paused = False
+        if isinstance(self.game, Catcher) and self._running():
             self.game.move_to(e.x)
 
     def _key(self, d):
-        if isinstance(self.game, Catcher):
+        if isinstance(self.game, Catcher) and self._running():
             self.game.nudge(d)
 
     def _click(self, e):
         self.cv.focus_set()
+        g = self.game
         x, y = getattr(e, "x", 0), getattr(e, "y", 0)
-        if isinstance(self.game, Catcher) and not self.game.over:
-            self.game.move_to(x)
-        was_over = self.game.over
-        self.game.click(x, y)
-        if was_over:
-            self._scored.pop(self.game.name, None)
-        if isinstance(self.game, Match) and self.game.pending:
-            self.after(650, self.game.resolve)
+        self.paused = False
+        if g.over:  # a click after the end: play again, but wait for the next click to start
+            g.click(x, y)
+            self._scored.pop(g.name, None)
+            self.started[g.name] = isinstance(g, Match)
+            return
+        if not self.started[g.name]:
+            self.started[g.name] = True
+            if isinstance(g, Catcher):
+                g.move_to(x)
+            return
+        if isinstance(g, Catcher):
+            g.move_to(x)
+        g.click(x, y)
+        if isinstance(g, Match) and g.pending and self._resolve_job is None:
+            self._resolve_job = self.after(650, self._resolve)
+
+    def _resolve(self):
+        self._resolve_job = None
+        self.games["Match"].resolve()
 
     def _record(self):
         g = self.game
@@ -347,49 +408,42 @@ class GamePanel(tk.Frame):
         self._last = now
         mapped = self.cv.winfo_ismapped()
         if mapped:
-            self.game.step(dt)
-            draw(self.cv, self.game)
+            if self._was_hidden:  # came back from another tool / the file view: wait for the pointer before going on
+                self._was_hidden = False
+                if self.started[self.game.name] and not isinstance(self.game, Match):
+                    self.paused = True
+            if self._running():
+                self.game.step(dt)
+            mode = "ready" if not self.started[self.game.name] else "paused" if self.paused and not self.game.over else "play"
+            draw(self.cv, self.game, mode)
             self._record()
+        else:
+            self._was_hidden = True
         self._job = self.after(33 if mapped else 300, self._tick)
 
     def tool_finished(self):
         self.note.configure(text="✔ The tool has finished. Close the game (✕) to see its results; nothing was interrupted.", fg=GOOD)
 
     def destroy(self):
-        if self._job is not None:
-            try:
-                self.after_cancel(self._job)
-            except tk.TclError:
-                pass
+        for j in (self._job, self._resolve_job):
+            if j is not None:
+                try:
+                    self.after_cancel(j)
+                except tk.TclError:
+                    pass
         super().destroy()
 
 
-# ------------------------------------------------------------------------------------------------ offering it while a tool is slow
-_G = {"chip": None, "panel": None, "page": None}
+# ------------------------------------------------------------------------------------------------ the chip that offers it in every tool
+_G = {"chip": None, "panel": None, "page": None, "chip_label": None}
+CORNER = dict(relx=1, rely=0, anchor="ne", x=-18, y=12)  # top right: the Close / Back buttons of the tools are at the bottom
 
 
 def hide():
+    """Remove the chip and the game (the setting 'Offer a mini-game' was turned off)."""
     for k in ("chip", "panel"):
-        w = _G[k]
-        if w is not None:
-            try:
-                w.destroy()
-            except tk.TclError:
-                pass
-        _G[k] = None
+        _drop(k)
     _G["page"] = None
-
-
-def _chip(A, host, st):
-    fr = tk.Frame(host, bg=T["accent"], cursor="hand2")
-    lab = tk.Label(fr, text="▶  Play a quick game", bg=T["accent"], fg="#ffffff", font=("Segoe UI", 10, "bold"), padx=14, pady=6)
-    lab.pack(side="left")
-    lab.bind("<Button-1>", lambda e: _open_panel(A, host, st))
-    fr.bind("<Button-1>", lambda e: _open_panel(A, host, st))
-    fr.place(relx=1, rely=1, anchor="se", x=-18, y=-14)
-    fr.lift()
-    _G["chip"] = fr
-    _G["chip_label"] = lab
 
 
 def _drop(k):
@@ -402,27 +456,43 @@ def _drop(k):
     _G[k] = None
 
 
+def _chip(A, host, st):
+    fr = tk.Frame(host, bg=T["accent"], cursor="hand2")
+    lab = tk.Label(fr, text="▶  Play a quick game", bg=T["accent"], fg="#ffffff", font=("Segoe UI", 10, "bold"), padx=14, pady=6)
+    lab.pack(side="left")
+    lab.bind("<Button-1>", lambda e: _open_panel(A, host, st))
+    fr.bind("<Button-1>", lambda e: _open_panel(A, host, st))
+    fr.place(**CORNER)
+    fr.lift()
+    _G["chip"], _G["chip_label"] = fr, lab
+
+
 def _open_panel(A, host, st):
     _drop("chip")
-    if _G["panel"] is None:
+    if _G["panel"] is None or not _G["panel"].winfo_exists():
         p = GamePanel(host, A, on_minimize=lambda: (_drop("panel"), _chip(A, host, st)),
                       on_close=lambda: (_drop("panel"), _chip(A, host, st)))
-        p.place(relx=1, rely=1, anchor="se", x=-16, y=-12)
+        p.place(**CORNER)
         _G["panel"] = p
     _G["panel"].lift()
 
 
 def watch(A, host, page, slow_now):
     """Called every 400 ms for the visible tool: the games are always one click away in the corner (the chip says so louder while the
-    tool is busy), and a game in progress is told when the tool finishes - it is never taken away."""
+    tool is busy), and a game in progress is told when the tool finishes. A game is never taken away, not even when you open another tool."""
     if page is None or host is None or not A.cfg.get("game_offer", True):
         if _G["chip"] is not None or _G["panel"] is not None:
             hide()
         return
-    if _G["page"] is not page:
-        hide()
-        _G["page"] = page
+    if _G["panel"] is not None and not _G["panel"].winfo_exists():
+        _G["panel"] = None
+    if _G["chip"] is not None and not _G["chip"].winfo_exists():
+        _G["chip"] = None
     st = page.__dict__.setdefault("_game", {"since": None})
+    if _G["page"] is not page:  # another tool: the old 'finished' note no longer applies
+        _G["page"] = page
+        if _G["panel"] is not None:
+            _G["panel"].reset_note()
     if _G["chip"] is None and _G["panel"] is None:
         _chip(A, host, st)
     lab = _G.get("chip_label")
@@ -445,4 +515,4 @@ def open_games(A):
     tk.Label(win, text="Mini-games", bg=T["bg"], fg=T["fg"], font=("Segoe UI", A.cfg["font_size"] + 6, "bold")).pack(anchor="w", padx=22, pady=(18, 2))
     tk.Label(win, text="They also pop up (as a small chip in the corner) when a tool takes more than a few seconds. Turn that off in Customize.",
              bg=T["bg"], fg=T["muted"], font=("Segoe UI", A.cfg["font_size"]), wraplength=620, justify="left").pack(anchor="w", padx=22, pady=(0, 12))
-    GamePanel(win, A).pack(anchor="w", padx=22)
+    GamePanel(win, A, floating=False).pack(anchor="w", padx=22)

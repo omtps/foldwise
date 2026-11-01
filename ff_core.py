@@ -724,33 +724,101 @@ FOLDER_VERBS = [r"Software\Classes\Directory\shell\open", r"Software\Classes\Dir
 FOLDER_DEFAULT_KEYS = [r"Software\Classes\Directory\shell", r"Software\Classes\Drive\shell"]
 
 
+def _reg_read(winreg, key):
+    """{'default': str|None, 'delegate': str|None} of a HKCU key, or None when the key does not exist."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key) as k:
+            out = {}
+            for name, label in (("", "default"), ("DelegateExecute", "delegate")):
+                try:
+                    out[label] = winreg.QueryValueEx(k, name)[0]
+                except OSError:
+                    out[label] = None
+            return out
+    except OSError:
+        return None
+
+
+def _backup_path():
+    return DB_DIR / "folder_opener_backup.json"
+
+
+def folder_opener_state():
+    """'foldwise' (folders open here), 'broken' (set, but the program it points to is gone) or 'windows' (nothing of ours is set)."""
+    import winreg
+    cur = _reg_read(winreg, FOLDER_VERBS[0] + "\\command")
+    cmd = (cur or {}).get("default") or ""
+    if "foldwise" not in cmd.lower():
+        return "windows"
+    quoted = re.findall(r'"([^"]+)"', cmd)
+    return "foldwise" if quoted and all(os.path.exists(q) for q in quoted if q != "%1") else "broken"
+
+
 def set_default_folder_opener(enable):
-    """Registry switch (current user only): programs that ask Windows to open/explore a folder get Foldwise.
-    Reversible. Only runs when YOU run it (python foldwise.py --set-default-folder-opener)."""
+    """Registry switch (current user only, nothing needs admin): programs that ask Windows to open/explore a folder get Foldwise.
+    What was set before is saved first and put back when you switch off, so it is fully reversible. Runs only when YOU choose it
+    (Customize > Default file manager, or --set-default-folder-opener / --restore-default-folder-opener)."""
+    import json
     import winreg
     cmd = " ".join(f'"{p}"' for p in launch_cmd()) + ' "%1"'
     hkcu = winreg.HKEY_CURRENT_USER
-    for key in FOLDER_VERBS:
-        if enable:
+    keys = FOLDER_VERBS + [k + "\\command" for k in FOLDER_VERBS] + FOLDER_DEFAULT_KEYS
+    if enable:
+        if not _backup_path().exists():  # remember the way things were, once (never overwrite it with our own settings)
+            try:
+                _backup_path().parent.mkdir(parents=True, exist_ok=True)
+                _backup_path().write_text(json.dumps({k: _reg_read(winreg, k) for k in keys}), encoding="utf-8")
+            except OSError:
+                pass
+        for key in FOLDER_VERBS:
             with winreg.CreateKey(hkcu, key + "\\command") as k:
                 winreg.SetValueEx(k, "", 0, winreg.REG_SZ, cmd)
                 winreg.SetValueEx(k, "DelegateExecute", 0, winreg.REG_SZ, "")  # blank = run the command above
-        else:
-            for k_ in (key + "\\command", key):
+        for key in FOLDER_DEFAULT_KEYS:  # make "open" the default action (Windows ships it as "none")
+            with winreg.CreateKey(hkcu, key) as k:
+                winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "open")
+        return
+    try:
+        before = json.loads(_backup_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        before = {}
+    for key in sorted(keys, key=lambda k: -k.count(chr(92))):  # deepest keys first (a key with sub-keys cannot be deleted)
+        was = before.get(key)
+        if was is None:  # it did not exist before: remove ours
+            try:
+                winreg.DeleteKey(hkcu, key)
+            except OSError:  # still has other sub-keys (not ours): at least take our value out
                 try:
-                    winreg.DeleteKey(hkcu, k_)
+                    with winreg.OpenKey(hkcu, key, 0, winreg.KEY_SET_VALUE) as k:
+                        winreg.DeleteValue(k, "")
                 except OSError:
                     pass
-    for key in FOLDER_DEFAULT_KEYS:  # make "open" the default action (Windows ships it as "none")
-        try:
-            if enable:
-                with winreg.CreateKey(hkcu, key) as k:
-                    winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "open")
-            else:
-                with winreg.OpenKey(hkcu, key, 0, winreg.KEY_SET_VALUE) as k:
-                    winreg.DeleteValue(k, "")
-        except OSError:
-            pass
+            continue
+        with winreg.CreateKey(hkcu, key) as k:  # it existed (another program's setting): put the old values back
+            for name, label in (("", "default"), ("DelegateExecute", "delegate")):
+                if was.get(label) is not None:
+                    winreg.SetValueEx(k, name, 0, winreg.REG_SZ, was[label])
+                else:
+                    try:
+                        winreg.DeleteValue(k, name)
+                    except OSError:
+                        pass
+    try:
+        _backup_path().unlink()
+    except OSError:
+        pass
+
+
+def heal_default_folder_opener():
+    """At start: if Foldwise is the default folder opener but its program is gone (deleted, moved), switch back to Windows so folder
+    links never end up broken. Returns True when it did."""
+    try:
+        if folder_opener_state() == "broken":
+            set_default_folder_opener(False)
+            return True
+    except Exception as e:  # noqa - a registry problem must never stop the program
+        log_error(f"default folder opener check: {e}")
+    return False
 
 
 def launch_cmd():

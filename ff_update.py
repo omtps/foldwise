@@ -17,10 +17,11 @@ import time
 import urllib.request
 from pathlib import Path
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 
 # newest first; shown in Tools > Foldwise > What's new and as a toast after an update (keep CHANGELOG.md in step)
 WHATS_NEW = [
+    ('1.0.1', ["Mini-games fixed: they start on your first click, pause when the pointer leaves, can be dragged by the title bar, no longer cover a tool's buttons and keep playing when you open another tool", 'Foldwise has its own file and folder chooser: tools no longer open the Windows file dialog', 'Customize > Default file manager: make Foldwise open your folders instead of File Explorer, one click to switch back (reversible, undoes itself if Foldwise is deleted)', 'Tutorial buttons in the FTP / SFTP / WebDAV and Phone notifications tools']),
     ("1.0.0", ["File manager with tabs, split view, previews, tags, archives as folders and undo",
                "Instant search over every drive, with optional search inside documents and PDFs",
                "Smart cleaner, duplicate and look-alike photo finders, folder size history",

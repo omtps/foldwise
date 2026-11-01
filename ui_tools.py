@@ -17,7 +17,7 @@ from ff_core import (DB_DIR, DEFAULT_CFG, IMG_EXTS, Path, T, blend, dir_stats, f
 
 def ask_rows(A, title, types=(("All files", "*.*"),), multiple=False, folder=False):
     """Selected-file tools also work from the Tools list: when nothing suitable is selected, ask with a file / folder dialog."""
-    from tkinter import filedialog
+    from ui_picker import filedialog
     kw = dict(parent=A.root, title=title, initialdir=A.st["cwd"] if os.path.isdir(A.st["cwd"]) else None)
     if folder:
         paths = [filedialog.askdirectory(**kw)]
@@ -275,7 +275,7 @@ def open_ocr(A):
         A.status.set("Text copied")
 
     def save():
-        from tkinter import filedialog
+        from ui_picker import filedialog
         p_ = filedialog.asksaveasfilename(parent=win, defaultextension=".txt", initialfile=os.path.splitext(s_[0][0])[0] + ".txt")
         if p_:
             Path(p_).write_text(txt.get("1.0", "end").strip(), encoding="utf-8")
@@ -288,7 +288,7 @@ def open_ocr(A):
 
 
 def open_sync(A):
-    from tkinter import filedialog
+    from ui_picker import filedialog
     win = A.toplevel("Sync two folders", "980x680")
     alive = {"v": True}
     win.bind("<Destroy>", lambda e: alive.update(v=False) if e.widget is win else None)
@@ -564,6 +564,7 @@ def open_ftp(A):
     ttk.Button(bt, text="Upload selected files from Foldwise", command=upload).pack(side="left", padx=8)
     ttk.Button(bt, text="Refresh", command=refresh_list).pack(side="left")
     ttk.Button(bt, text="Close", command=win.destroy).pack(side="right")
+    ttk.Button(bt, text="Tutorial", command=lambda: A.open_howto("ftp")).pack(side="right", padx=8)
 
 
 def open_vault(A):
@@ -748,7 +749,7 @@ def open_photo_info(A):
 
 
 def export_settings(A):
-    from tkinter import filedialog
+    from ui_picker import filedialog
     import json
     p_ = filedialog.asksaveasfilename(parent=A.root, defaultextension=".json", initialfile="Foldwise settings.json", filetypes=[("Settings", "*.json")])
     if p_:
@@ -758,7 +759,7 @@ def export_settings(A):
 
 
 def import_settings(A):
-    from tkinter import filedialog
+    from ui_picker import filedialog
     import json
     p_ = filedialog.askopenfilename(parent=A.root, filetypes=[("Settings", "*.json")])
     if not p_:

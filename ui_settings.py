@@ -175,6 +175,43 @@ def open_settings(A, _=None):
         row=r, column=2, sticky="w", padx=10)
     r += 1
 
+    label("DEFAULT FILE MANAGER")
+    fm_state = tk.StringVar()
+    ttk.Label(f, textvariable=fm_state, wraplength=520).grid(row=r, column=0, columnspan=2, sticky="w", pady=4)
+    fm_btn = ttk.Button(f, text="")
+    fm_btn.grid(row=r, column=2, sticky="e", padx=10)
+    r += 1
+    ttk.Label(f, text="When another program or Windows opens a folder (for example \u201cShow in folder\u201d), Foldwise opens it instead of File Explorer. "
+              "Only your Windows account is changed, no administrator needed. Switching back restores what was there before, and Foldwise "
+              "switches back by itself if it is ever deleted.", style="DetKey.TLabel", background=T["bg"], wraplength=640).grid(row=r, column=0, columnspan=3, sticky="w")
+    r += 1
+
+    def fm_refresh():
+        import ff_core
+        try:
+            st = ff_core.folder_opener_state()
+        except Exception:  # noqa - not Windows / registry unavailable
+            st = "windows"
+            fm_btn.state(["disabled"])
+        if st == "foldwise":
+            fm_state.set("Foldwise opens your folders.")
+            fm_btn.configure(text="Go back to File Explorer", command=lambda: fm_switch(False), style="TButton")
+        else:
+            fm_state.set("File Explorer opens your folders." if st == "windows" else "Foldwise was set, but its program is missing.")
+            fm_btn.configure(text="Make Foldwise my file manager", command=lambda: fm_switch(True), style="Accent.TButton")
+
+    def fm_switch(on):
+        import ff_core
+        ask = ("Make Foldwise open your folders instead of File Explorer?" + chr(10) * 2 + "You can switch back here at any time.") if on else "Go back to File Explorer for opening folders?"
+        if not messagebox.askyesno("Default file manager", ask, parent=win):
+            return
+        try:
+            ff_core.set_default_folder_opener(on)
+        except Exception as e:  # noqa
+            messagebox.showerror("Default file manager", f"Couldn't change it: {e}", parent=win)
+        fm_refresh()
+    fm_refresh()
+
     label("GLOBAL HOTKEY")
     hk = tk.StringVar(value=A.cfg["hotkey"] or A.st["hk"].split(" ")[0].lower())
     ttk.Entry(f, textvariable=hk, width=22).grid(row=r, column=0, columnspan=2, sticky="w", pady=4)

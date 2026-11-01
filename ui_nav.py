@@ -230,7 +230,7 @@ def dest_menu(A, move):
 
 
 def choose_dest(A, move):
-    from tkinter import filedialog
+    from ui_picker import filedialog
     d = filedialog.askdirectory(initialdir=A.st["cwd"], parent=A.root, title="Choose a destination folder")
     if d and A.sel():
         A.run_transfer([r[1] for r in A.sel()], os.path.normpath(d), move)

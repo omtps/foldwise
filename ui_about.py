@@ -159,7 +159,7 @@ def open_about(A):
         restart_prompt(A, win)
 
     def from_file():
-        from tkinter import filedialog
+        from ui_picker import filedialog
         p = filedialog.askopenfilename(parent=win, filetypes=[("Foldwise program", "*.exe")])
         if not p:
             return
@@ -216,99 +216,6 @@ def update_tick(A):
         if text:
             A.root.after(0, lambda: A.show_toast(text, "Open About", "about"))
     threading.Thread(target=work, daemon=True).start()
-
-
-def open_share(A):
-    """Put Foldwise on another computer: a download page on your home network, or a copy on a USB stick / folder."""
-    import ff_share
-    win = A.toplevel("Put Foldwise on another PC", "760x640")
-    alive = {"v": True}
-    st = {"share": A.share_state.get("share")}
-    win.bind("<Destroy>", lambda e: alive.update(v=False) if e.widget is win else None)
-    f = ttk.Frame(win, padding=20)
-    f.pack(fill="both", expand=True)
-    ttk.Label(f, text="Option 1 \u2014 same home network (easiest)", font=("Segoe UI", 12, "bold")).pack(anchor="w")
-    ttk.Label(f, text="Start the share, then on the other computer open the address below in any browser and press Download. "
-              "The address contains a secret code, only Foldwise.exe can be downloaded, and nothing is shared until you press Start. "
-              "Windows may ask to allow Foldwise on the network \u2014 choose Private networks.", wraplength=700).pack(anchor="w", pady=(4, 8))
-    msg = tk.StringVar(value="")
-    urls = tk.Text(f, height=5, bg=T["panel"], fg=T["fg"], relief="flat", font=("Consolas", 10), wrap="none", padx=10, pady=8)
-    urls.pack(fill="x")
-    urls.configure(state="disabled")
-    row = ttk.Frame(f)
-    row.pack(fill="x", pady=8)
-    go = ttk.Button(row, text="Start sharing", style="Accent.TButton")
-    go.pack(side="left")
-
-    def show(lines):
-        urls.configure(state="normal")
-        urls.delete("1.0", "end")
-        urls.insert("1.0", "\n".join(lines))
-        urls.configure(state="disabled")
-
-    def toggle():
-        sh = st["share"]
-        if sh and sh.server:
-            sh.stop()
-            A.share_state["share"] = st["share"] = None
-            go.configure(text="Start sharing")
-            show([])
-            msg.set("Sharing stopped.")
-            return
-        try:
-            sh = ff_share.Share()
-            lines = sh.start()
-        except Exception as e:  # noqa
-            msg.set(f"Couldn't start: {e}")
-            return
-        A.share_state["share"] = st["share"] = sh
-        go.configure(text="Stop sharing")
-        show(lines)
-        msg.set("Sharing. Use the FIRST address if you're unsure (the others are virtual adapters, e.g. VMware). It stops when you press Stop or close Foldwise.")
-        poll()
-
-    def poll():
-        sh = st["share"]
-        if alive["v"] and sh and sh.server:
-            if sh.downloads:
-                msg.set(f"Downloaded {sh.downloads} time(s). Stop sharing when you're done.")
-            win.after(2000, poll)
-
-    def copy_first():
-        sh = st["share"]
-        if sh and sh.server:
-            A.root.clipboard_clear()
-            A.root.clipboard_append(sh.urls()[0])
-            msg.set("Address copied.")
-    go.configure(command=toggle)
-    ttk.Button(row, text="Copy first address", command=copy_first).pack(side="left", padx=8)
-    if st["share"] and st["share"].server:
-        go.configure(text="Stop sharing")
-        show(st["share"].urls())
-
-    ttk.Separator(f).pack(fill="x", pady=14)
-    ttk.Label(f, text="Option 2 \u2014 USB stick or any folder", font=("Segoe UI", 12, "bold")).pack(anchor="w")
-    ttk.Label(f, text="Copies Foldwise.exe, an update.json and a short README into a folder you choose. Take it to the other PC.",
-              wraplength=700).pack(anchor="w", pady=(4, 8))
-
-    def to_folder():
-        from tkinter import filedialog
-        d = filedialog.askdirectory(parent=win, title="Where to put the Foldwise package (e.g. your USB stick)")
-        if d:
-            try:
-                out = ff_share.export_package(os.path.join(d, "Foldwise"))
-                msg.set(f"Saved to {out}")
-            except Exception as e:  # noqa
-                msg.set(f"Couldn't save: {e}")
-    ttk.Button(f, text="Save a copy to a folder / USB stick\u2026", command=to_folder).pack(anchor="w")
-
-    ttk.Separator(f).pack(fill="x", pady=14)
-    ttk.Label(f, text="Option 3 \u2014 over the internet", font=("Segoe UI", 12, "bold")).pack(anchor="w")
-    ttk.Label(f, text="Upload Foldwise.exe (and dist\\update.json) to a place you control, e.g. a GitHub release, OneDrive/Google Drive "
-              "\u201Cshare link\u201D, or your own web server, and download it there. Put the address of update.json in About \u2192 Updates on every PC "
-              "to get new versions automatically. (I can't upload for you: it needs your account.)", wraplength=700).pack(anchor="w", pady=(4, 8))
-    ttk.Label(f, textvariable=msg, wraplength=700).pack(anchor="w", pady=6)
-    ttk.Button(f, text="Close", command=win.destroy).pack(anchor="e", side="bottom")
 
 
 def problem_report(A):
@@ -424,7 +331,10 @@ def open_notify(A):
     ttk.Button(bt, text="Save and send a test", style="Accent.TButton", command=test).pack(side="left")
     ttk.Button(bt, text="Remove", command=lambda: (url.set(""), A.save_cfg(notify_url=""), msg.set("Notifications to the phone are off."))).pack(side="left", padx=8)
     ttk.Label(f, textvariable=msg, wraplength=670).pack(anchor="w", pady=10)
-    ttk.Button(f, text="Close", command=win.destroy).pack(anchor="e", side="bottom")
+    br = ttk.Frame(f)
+    br.pack(anchor="e", side="bottom")
+    ttk.Button(br, text="Tutorial", command=lambda: A.open_howto("notify")).pack(side="left", padx=8)
+    ttk.Button(br, text="Close", command=win.destroy).pack(side="left")
 
 
 SETUP_OPTIONS = [  # (config key, label, hint) - everything except plain filename indexing starts OFF; this wizard asks once
@@ -499,7 +409,7 @@ def welcome(A, rerun=False):
         win.destroy()
         A.status.set("Setup saved. Win+E / index / OCR changes apply after a restart.")
         if check.get():
-            A.open_tuneup()
+            A.open_health()
         elif A.cfg.get("show_tutorial", True) and not rerun:
             A.open_tutorial()
     ttk.Button(bottom, text="Save", style="Accent.TButton", command=go).pack(side="right")

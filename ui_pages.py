@@ -12,27 +12,26 @@ _S = {"pages": [], "active": None, "host": None, "nav": None, "cv": None, "sb": 
       "hidden": [], "ids": {}, "poll": None}
 
 DESC = {"Smart disk cleaner": "Free space safely", "Duplicate files": "Find identical copies", "Largest files": "What takes the space",
-        "Empty folders": "Tidy up leftovers", "Organize folder": "Sort by type or date", "Disk usage map": "See space visually",
-        "PC health": "Score, disks, security", "Tune-up wizard": "One-click check-up", "Backups": "Copy new files elsewhere",
+        "Organize folder": "Sort by type or date", "Disk usage map": "See space visually",
+        "PC health": "Score, disks, security", "Backups": "Copy new files elsewhere",
         "Malware check": "Defender + deep check", "Integrity check": "Detect changed files", "System information": "Windows, CPU, memory, drives", "Encrypted vault": "Lock a folder with a password",
         "Sync two folders": "Keep two folders equal", "Checksum": "Verify a file's hash", "Convert images": "Resize or change format",
         "Photo details": "EXIF, remove location", "Look-alike photos": "Near-duplicate pictures", "Text from image / PDF": "OCR scanned pages",
-        "Compare panes": "Differences of two folders", "FTP / SFTP / WebDAV": "Browse remote servers",
-        "Foldwise on another PC": "Share the program", "Phone notifications": "Alerts to your phone",
+        "Compare panes": "Differences of two folders", "FTP / SFTP / WebDAV": "Browse remote servers", "Phone notifications": "Alerts to your phone",
         "Storage by file type": "Which types take the space", "Recycle Bin": "See and restore deleted files", "Folder size history": "Watch a folder grow over time", "Smart collections": "Ready-made searches", "Mini-games": "Something to do while a scan runs", "Undo history": "What Ctrl+Z would undo", "Recent changes": "What changed lately", "Shortcuts & tips": "Every keyboard shortcut", "Tutorial": "A quick tour of Foldwise", "What's new": "Changes in this version",
         "Customize": "Theme, behaviour, keys", "Storage & index": "Sizes, rebuild index", "About & updates": "Version, install, update"}
 
 # the settings-style list on the left of the tools area: (group, [(label, A attribute, args)])
 TOOLS = [
     ("Clean up", [("Smart disk cleaner", "open_cleaner"), ("Duplicate files", "open_duplicates"), ("Largest files", "open_largest"),
-                  ("Empty folders", "open_empty_folders"), ("Organize folder", "open_organize"), ("Disk usage map", "open_treemap"),
+                  ("Organize folder", "open_organize"), ("Disk usage map", "open_treemap"),
                   ("Storage by file type", "open_storage_types"), ("Folder size history", "open_folder_history"), ("Recycle Bin", "open_recycle_bin")]),
-    ("Health & security", [("PC health", "open_health"), ("Tune-up wizard", "open_tuneup"), ("Backups", "open_health", ("backups",)),
+    ("Health & security", [("PC health", "open_health"), ("Backups", "open_health", ("backups",)),
                            ("Malware check", "open_malware"), ("Integrity check", "open_integrity"), ("System information", "open_system_info")]),
     ("Files & photos", [("Encrypted vault", "open_vault"), ("Sync two folders", "open_sync"), ("Checksum", "open_checksum"),
                         ("Convert images", "open_convert_images"), ("Photo details", "open_photo_info"),
                         ("Look-alike photos", "open_similar_photos"), ("Smart collections", "open_collections"), ("Undo history", "open_undo_history"), ("Recent changes", "open_recent_changes"), ("Text from image / PDF", "open_ocr"), ("Compare panes", "open_compare")]),
-    ("Connect & share", [("FTP / SFTP / WebDAV", "open_ftp"), ("Foldwise on another PC", "open_share"), ("Phone notifications", "open_notify")]),
+    ("Connect & share", [("FTP / SFTP / WebDAV", "open_ftp"), ("Phone notifications", "open_notify")]),
     ("Foldwise", [("Customize", "open_settings"), ("Storage & index", "open_storage"), ("About & updates", "open_about"),
                     ("Mini-games", "open_games"), ("Shortcuts & tips", "open_shortcuts"), ("What's new", "open_whats_new"), ("Tutorial", "open_tutorial")]),
 ]
@@ -75,11 +74,11 @@ class Page(tk.Frame):
             stack.extend(w.winfo_children())
             try:
                 cls = w.winfo_class()
-                if cls == "TProgressbar" and w.winfo_ismapped():
+                if cls == "TProgressbar" and w.winfo_manager():  # shown by its tool (a hidden tab's widgets are not 'mapped', but a scan there still runs)
                     mx, v = float(w.cget("maximum")), float(w.cget("value"))
                     if w.cget("mode") == "indeterminate" or 0 < v < mx:
                         return True
-                elif cls == "TButton" and w.winfo_ismapped() and str(w.cget("text")).strip(" .…").lower() in (
+                elif cls == "TButton" and w.winfo_manager() and str(w.cget("text")).strip(" .…").lower() in (
                         "cancel", "stop", "stop scan", "cancel scan", "stop scanning") and "disabled" not in w.state():
                     return True
             except tk.TclError:
@@ -233,8 +232,6 @@ def _fit(_=None):
 def _poll(A):
     if _S["active"] is None or _S["host"] is None or not _S["host"].winfo_exists():
         _S["poll"] = None
-        import ui_games
-        ui_games.hide()
         return
     _fit()
     try:

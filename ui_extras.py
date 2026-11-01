@@ -6,7 +6,7 @@ import io
 import os
 import threading
 import tkinter as tk
-from tkinter import filedialog
+from ui_picker import filedialog
 from tkinter import ttk
 
 from ff_core import T, TEXT_EXTS, connect, fmt_date, human_size, windows_prefers_light
@@ -38,7 +38,7 @@ def overview_stats(A):
     import time
     out = []
     sc = A.cfg.get("last_score")
-    out.append(("PC health", f"{sc} / 100" if sc is not None else "not checked", "Open PC health for details" if sc is not None else "Run the Tune-up wizard",
+    out.append(("PC health", f"{sc} / 100" if sc is not None else "not checked", "Open PC health for details" if sc is not None else "Open PC health to run a check",
                 "#4ade80" if (sc or 0) >= 80 else "#facc15" if (sc or 0) >= 60 else "#f87171" if sc is not None else T["muted"], ("open_health", ())))
     try:
         d = os.path.splitdrive(A.st["cwd"])[0] + "\\"

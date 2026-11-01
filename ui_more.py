@@ -6,7 +6,8 @@ import os
 import threading
 import time
 import tkinter as tk
-from tkinter import filedialog, ttk
+from tkinter import ttk
+from ui_picker import filedialog
 
 import ff_core
 import ff_health as HL
@@ -290,3 +291,58 @@ def crash_check(A):
         except Exception as e:  # noqa
             A.status.set(f"Couldn't make the report: {e}")
     A.show_toast("Foldwise closed unexpectedly at some point. A problem report shows why.", "Make report", make)
+
+
+# ------------------------------------------------------------------------------------------------ short how-to guides inside tools
+HOWTO = {
+    "ftp": ("Connecting to a server (FTP / SFTP / WebDAV)", [
+        ("1. Pick the protocol", "SFTP (SSH) is the safe choice and works with most servers and NAS boxes. FTPS is FTP with encryption. Plain FTP "
+         "sends everything readable, so use it only on your own home network. WebDAV is for NAS boxes, Nextcloud and similar: type the full "
+         "https:// address in the Server box."),
+        ("2. Server and port", "Server is a name or address such as 192.168.1.20 or files.example.com. The port fills in by itself (21 for FTP and "
+         "FTPS, 22 for SFTP). Change it only if your server owner tells you to."),
+        ("3. User and password", "Type them every time: Foldwise never saves the password. Public FTP servers often accept the user "
+         "'anonymous' with any password."),
+        ("4. Connect", "Press Connect. With SFTP the first time shows the server's fingerprint: compare it with the one the server owner gave "
+         "you before you accept. Foldwise remembers it and warns you if it ever changes."),
+        ("5. Browse", "Double-click a folder to open it, '..' goes up. The file list shows names and sizes."),
+        ("6. Download and upload", "Select files in the list and press 'Download selected': they are saved into the folder that is open in "
+         "Foldwise's file view. 'Upload selected files from Foldwise' sends the files you selected in the file view. Both run in the "
+         "background and tell you when they are done."),
+        ("7. When you are done", "Close the tool: the connection is closed with it."),
+    ]),
+    "notify": ("Getting alerts on your phone", [
+        ("1. What you will get", "Foldwise can send its weekly check-up and malware warnings to your phone as a short message. Only that "
+         "message text is sent, never file names or contents of your files."),
+        ("2. Easiest free way: ntfy", "Install the free ntfy app on your phone (Android or iPhone). In the app press + and subscribe to a topic "
+         "name that only you know, for example foldwise-yourname-4821. Anyone who knows the name could read the messages, so make it hard to guess."),
+        ("3. Paste the address here", "In Foldwise type  https://ntfy.sh/<your topic>  in the box (for example https://ntfy.sh/foldwise-yourname-4821) "
+         "and press 'Save and send a test'. The test message should arrive on your phone within seconds."),
+        ("4. Discord instead", "Create a webhook in a Discord channel you own (Channel settings > Integrations > Webhooks > New webhook > Copy "
+         "webhook URL) and paste that address in the same box."),
+        ("5. Turn it off", "Press Remove: nothing is sent any more. The weekly check-up toast on this PC is a separate setting."),
+    ]),
+}
+
+
+def open_howto(A, topic):
+    """A small window with numbered steps for one tool (the Tutorial buttons of the FTP and Phone notifications tools)."""
+    title, steps = HOWTO[topic]
+    win = tk.Toplevel(A.root)
+    win.title(title)
+    win.configure(bg=T["bg"])
+    win.transient(A.root)
+    w, h = 640, 600
+    win.geometry(f"{w}x{h}+{A.root.winfo_rootx() + 60}+{A.root.winfo_rooty() + 40}")
+    tk.Label(win, text=title, bg=T["bg"], fg=T["fg"], font=("Segoe UI", A.cfg["font_size"] + 5, "bold"), anchor="w", wraplength=w - 50).pack(fill="x", padx=22, pady=(18, 6))
+    ttk.Button(win, text="Close", command=win.destroy).pack(side="bottom", anchor="e", padx=22, pady=14)
+    txt = tk.Text(win, bg=T["bg"], fg=T["fg"], relief="flat", wrap="word", padx=4, pady=4, borderwidth=0, highlightthickness=0,
+                  font=("Segoe UI", A.cfg["font_size"]), cursor="arrow")
+    txt.pack(fill="both", expand=True, padx=22)
+    txt.tag_configure("h", font=("Segoe UI", A.cfg["font_size"] + 1, "bold"), foreground=T["accent"], spacing1=12, spacing3=2)
+    for head, body in steps:
+        txt.insert("end", head + chr(10), "h")
+        txt.insert("end", body + chr(10))
+    txt.configure(state="disabled")
+    win.bind("<Escape>", lambda e: win.destroy())
+    win.focus_set()

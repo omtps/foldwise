@@ -201,7 +201,7 @@ def open_cleaner(A):
     ttk.Button(btns, text="Rescan", command=lambda: scan_all()).pack(side="left", padx=8)
 
     def edit_protected():
-        from tkinter import filedialog
+        from ui_picker import filedialog
         d = A.toplevel("Protected folders", "720x420")
         f_ = ttk.Frame(d, padding=18)
         f_.pack(fill="both", expand=True)
@@ -686,68 +686,3 @@ def open_organize(A):
     ttk.Button(btns, text="Organize", style="Accent.TButton", command=apply).pack(side="left")
     ttk.Button(btns, text="Cancel", command=win.destroy).pack(side="left", padx=8)
     load()
-
-
-def open_empty_folders(A):
-    folder = A.st["cwd"]
-    if X.zip_is_virtual(folder):
-        A.status.set("Can't scan inside an archive")
-        return
-    win = A.toplevel("Empty folders", "900x580")
-    alive = {"v": True}
-    win.bind("<Destroy>", lambda e: alive.update(v=False) if e.widget is win else None)
-    msg = tk.StringVar(value="Scanning…")
-    ttk.Label(win, text=f"Looking for folders with no files anywhere inside, under {folder}", padding=(14, 12, 14, 0)).pack(fill="x")
-    ttk.Label(win, textvariable=msg, padding=(14, 6)).pack(fill="x")
-    frm = tk.Frame(win, bg=T["bg"])
-    frm.pack(fill="both", expand=True, padx=10)
-    te = ttk.Treeview(frm, columns=("nested",), show="tree headings", selectmode="extended")
-    te.heading("#0", text="Empty folder", anchor="w")
-    te.heading("nested", text="Empty folders inside it", anchor="e")
-    te.column("#0", width=680)
-    te.column("nested", width=170, anchor="e")
-    sbe = ttk.Scrollbar(frm, orient="vertical", command=te.yview)
-    te.configure(yscrollcommand=sbe.set)
-    sbe.pack(side="right", fill="y")
-    te.pack(fill="both", expand=True)
-
-    def work():
-        res = X.find_empty_folders(folder, lambda: not alive["v"],
-                                   lambda m: alive["v"] and A.root.after(0, lambda: alive["v"] and msg.set(m)))
-        if res is not None and A.cfg["cleaner_protected"]:
-            res = [r for r in res if not CL.is_protected(r[0], A.cfg["cleaner_protected"])]
-        if res is not None and alive["v"]:
-            A.root.after(0, lambda: alive["v"] and fill(res))
-
-    def fill(res):
-        for d, nested in res[:3000]:
-            te.insert("", "end", iid=d, text=os.path.relpath(d, folder), values=(f"+{nested}" if nested else "",))
-        msg.set(f"{len(res):,} empty folder(s) found" if res else "No empty folders found — nothing to clean up.")
-
-    def trash():
-        paths = list(te.selection())
-        if not paths:
-            return
-        if not messagebox.askyesno("Delete", f"Move {len(paths)} empty folder(s) (and anything empty inside them) to the Recycle Bin?", parent=win):
-            return
-        if recycle(paths):
-            A.push_undo("delete", paths)
-            for pth in paths:
-                te.delete(pth)
-            msg.set(f"{len(te.get_children()):,} empty folder(s) left")
-            A.after_change()
-        else:
-            messagebox.showerror("Foldwise", "Couldn't delete some of them.", parent=win)
-
-    def reveal():
-        c = te.selection()
-        if c:
-            A.navigate(os.path.dirname(c[0]), select=c[0])
-
-    btns = tk.Frame(win, bg=T["bg"])
-    btns.pack(fill="x", padx=10, pady=10)
-    ttk.Button(btns, text="Select all", command=lambda: te.selection_set(te.get_children())).pack(side="left")
-    ttk.Button(btns, text="Move selected to Recycle Bin", command=trash).pack(side="left", padx=8)
-    ttk.Button(btns, text="Show in Foldwise", command=reveal).pack(side="left")
-    ttk.Button(btns, text="Close", command=win.destroy).pack(side="right")
-    threading.Thread(target=work, daemon=True).start()

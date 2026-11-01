@@ -87,7 +87,7 @@ def open_health(A, tab=None):
     act_b = ttk.Button(rb, text="Fix it / open the tool", style="Accent.TButton")
     act_b.pack(side="left")
     def export_report():
-        from tkinter import filedialog
+        from ui_picker import filedialog
         p_ = filedialog.asksaveasfilename(parent=win, defaultextension=".html", filetypes=[("Web page", "*.html")],
                                           initialfile="PC health report " + time.strftime("%Y-%m-%d") + ".html")
         if p_:
@@ -108,7 +108,6 @@ def open_health(A, tab=None):
             messagebox.showerror("Virus scan", str(e), parent=win)
 
     ttk.Button(rb, text="Quick virus scan", command=quick_scan).pack(side="left", padx=8)
-    ttk.Button(rb, text="Tune-up wizard", command=lambda: A.open_tuneup()).pack(side="left")
     ttk.Button(rb, text="Export report…", command=export_report).pack(side="left", padx=8)
     hint = tk.Label(rb, text="Pick an item above, then press the button (or double-click it).", bg=T["bg"], fg=T["muted"])
     hint.pack(side="left", padx=12)
@@ -285,7 +284,7 @@ def open_health(A, tab=None):
         if edit is not None:
             src_v.set(A.cfg["backups"][edit]["src"])
             dst_v.set(A.cfg["backups"][edit]["dst"])
-        from tkinter import filedialog
+        from ui_picker import filedialog
         for r_, (label_, var_) in enumerate((("Folder to back up", src_v), ("Back it up into", dst_v))):
             ttk.Label(fr, text=label_).grid(row=r_ * 2, column=0, sticky="w", pady=(10, 2))
             ttk.Entry(fr, textvariable=var_, width=62).grid(row=r_ * 2 + 1, column=0, sticky="we")
@@ -777,80 +776,6 @@ def open_health(A, tab=None):
     if tab in pages:
         nb.select(pages[tab])
     collect()
-
-
-def open_tuneup(A):
-    win = A.toplevel("Tune-up", "820x620")
-    alive = {"v": True}
-    win.bind("<Destroy>", lambda e: alive.update(v=False) if e.widget is win else None)
-    ttk.Label(win, text="Runs every check once and tells you what is worth doing. Nothing is changed until you press one of the buttons.",
-              wraplength=780, padding=(16, 14, 16, 8)).pack(fill="x")
-    steps = ["Checking drives, memory, battery and updates", "Checking security settings", "Looking for safe junk to clean", "Checking your backups"]
-    sv = []
-    box = tk.Frame(win, bg=T["bg"])
-    box.pack(fill="x", padx=16)
-    for s_ in steps:
-        v = tk.StringVar(value="\u25CB  " + s_)
-        tk.Label(box, textvariable=v, bg=T["bg"], fg=T["muted"], anchor="w", font=("Segoe UI", A.cfg["font_size"] + 1)).pack(fill="x", pady=2)
-        sv.append(v)
-    out = tk.Text(win, bg=T["panel"], fg=T["fg"], relief="flat", wrap="word", height=14, font=("Segoe UI", A.cfg["font_size"]), padx=12, pady=10)
-    out.pack(fill="both", expand=True, padx=16, pady=10)
-    out.configure(state="disabled")
-    bt = ttk.Frame(win, padding=(16, 0, 16, 14))
-    bt.pack(fill="x")
-    res = {}
-
-    def mark(i, ok=None, text=None):
-        glyph = "\u2714" if ok else "\u25CF" if ok is False else "\u2026"
-        sv[i].set(f"{glyph}  {text or steps[i]}")
-
-    def work():
-        h = {}
-        try:
-            A.root.after(0, mark, 0)
-            h = HL.collect(A.cfg["backups"], A.cfg["space_history"])
-            A.root.after(0, mark, 0, True, steps[0] + " \u2014 done")
-            A.root.after(0, mark, 1)
-            A.root.after(0, mark, 1, True, steps[1] + " \u2014 done")
-            A.root.after(0, mark, 2)
-            junk = 0
-            for cid in CL.AUTO_CATEGORIES:
-                r_ = CL.apply_exclusions(CL.scan(cid, lambda: not alive["v"]), A.cfg["cleaner_protected"])
-                junk += sum(i[1] for i in (r_ or {}).get("items", []))
-            res["junk"] = junk
-            A.root.after(0, mark, 2, True, steps[2] + f" \u2014 {human_size(junk)} found")
-            A.root.after(0, mark, 3, True, steps[3] + " \u2014 done")
-        except Exception as e:  # noqa
-            log_error(f"tuneup: {e}")
-        res["h"] = h
-        A.root.after(0, lambda: alive["v"] and show())
-
-    def show():
-        h = res.get("h") or {}
-        Hd2 = dict(h)
-        Hd2["backups"] = A.cfg["backups"]
-        recs, score = HL.recommendations(Hd2)
-        A.set_score(score)
-        lines = [f"Health score: {score}/100 \u2014 {HL.score_label(score)}", ""]
-        todo = [r for r in recs if r[0] in ("bad", "warn")]
-        if res.get("junk", 0) > 50 << 20:
-            lines.append(f"\u2022 {human_size(res['junk'])} of temporary files and caches can be cleaned safely (moved to the restore list for 7 days).")
-        for sev, text, _a in todo:
-            lines.append("\u2022 " + text)
-        if len(lines) == 2:
-            lines.append("Nothing needs doing. Everything looks healthy.")
-        out.configure(state="normal")
-        out.delete("1.0", "end")
-        out.insert("1.0", "\n".join(lines))
-        out.configure(state="disabled")
-        if res.get("junk", 0) > 50 << 20:
-            ttk.Button(bt, text="Clean the junk now", style="Accent.TButton", command=lambda: (A.autoclean_now(), win.destroy())).pack(side="left")
-        ttk.Button(bt, text="Open full health center", command=lambda: (win.destroy(), A.open_health())).pack(side="left", padx=8)
-        if not A.cfg["backups"]:
-            ttk.Button(bt, text="Set up a backup", command=lambda: (win.destroy(), A.open_health("backups"))).pack(side="left")
-
-    ttk.Button(bt, text="Close", command=win.destroy).pack(side="right")
-    threading.Thread(target=work, daemon=True).start()
 
 
 def open_autoclean(A):

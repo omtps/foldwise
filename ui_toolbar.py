@@ -357,7 +357,7 @@ def palette_actions(A):
             ("Details pane on/off", A.toggle_details), ("Thumbnail grid on/off", A.toggle_grid),
             ("Compare the two panes", A.open_compare), ("Smart disk cleaner", A.open_cleaner), ("PC health check", A.open_health),
             ("Set up or run a backup", lambda: A.open_health("backups")), ("Find duplicate files in this folder", A.open_duplicates),
-            ("Find duplicate files in all my folders", lambda: A.open_duplicates("mine")), ("Find largest files", A.open_largest), ("Find empty folders", A.open_empty_folders), ("Sync two folders", A.open_sync), ("Photo details / remove location", A.open_photo_info), ("Integrity check (detect corrupted files)", A.open_integrity),
+            ("Find duplicate files in all my folders", lambda: A.open_duplicates("mine")), ("Find largest files", A.open_largest), ("Sync two folders", A.open_sync), ("Photo details / remove location", A.open_photo_info), ("Integrity check (detect corrupted files)", A.open_integrity),
             ("Checksum of selected file", A.open_checksum), ("Convert or resize selected images", A.open_convert_images),
             ("Clear search history", lambda: (A.save_cfg(search_history=[]), A.status.set("Search history cleared"))),
             ("Organize this folder by type or date", A.open_organize),

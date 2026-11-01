@@ -1,5 +1,13 @@
 # Foldwise changelog
 
+## 1.0.1 - 2026-11-01
+- Mini-games fixed: they start on your first click, pause when the pointer leaves, can be dragged by the title bar, no longer cover a tool's buttons and keep playing when you open another tool
+- Foldwise has its own file and folder chooser: tools no longer open the Windows file dialog
+- Customize > Default file manager: make Foldwise open your folders instead of File Explorer, one click to switch back (reversible, undoes itself if Foldwise is deleted)
+- Tutorial buttons in the FTP / SFTP / WebDAV and Phone notifications tools
+- Removed the Tune-up wizard, Foldwise on another PC and Empty folders tools (Empty folders is still inside the Smart disk cleaner)
+- Fixed: a scan running on a hidden tab could be closed when a third tool was opened
+
 ## 1.0.0 - 2026-11-01
 First release.
 - File manager: tabs, split view, details and thumbnail views, preview pane, tags and colour labels, archives as folders, undo
