@@ -1,0 +1,20 @@
+# build output and test sandboxes
+__pycache__/
+*.pyc
+build/
+dist/
+_t*/
+# local data and logs (the index can be several GB: it is never part of the program)
+data/
+portable.flag
+*.log
+*.db
+*.db-shm
+*.db-wal
+# tools / editor folders
+.claude/
+.vscode/
+
+# private working notes
+CLAUDE.md
+CHANGELOG-FileFinder-history.md
