@@ -4,6 +4,7 @@ Receiving is OFF until you switch it on, and every incoming transfer asks first.
 """
 import os
 import socket
+import sys
 import threading
 import time
 import tkinter as tk
@@ -27,7 +28,7 @@ def node(A):
     alias = (A.cfg.get("localsend_name") or "").strip() or socket.gethostname()[:30]
     folder = A.cfg.get("localsend_dir") or default_dir()
     if n is None:
-        n = _S["node"] = LS.Node(alias, str(DB_DIR / "localsend"), folder, on_request=lambda info: _ask(A, info),
+        n = _S["node"] = LS.Node(alias, str(DB_DIR / "localsend"), folder, port=int(A.cfg.get("localsend_port") or LS.PORT), on_request=lambda info: _ask(A, info),
                                  on_event=lambda k, d: _later(A, lambda: _event(A, k, d)))
     n.alias, n.receive_dir = alias, folder
     return n
@@ -61,15 +62,69 @@ def log(text=""):
         pass
 
 
+AUTO_OFF = 20 * 60  # receiving is a temporary mode: it switches itself off after this many seconds (never in the middle of a transfer)
+
+
 def autostart(A):
-    """At program start: begin receiving again if it was left on."""
+    """At program start receiving is always off (it never turns itself on); this only clears a stale 'on' left in the settings."""
     if A.cfg.get("localsend_on"):
+        A.save_cfg(localsend_on=False)
+
+
+def start_receiving(A):
+    """Start listening (raises OSError when the port is taken) and arm the automatic switch-off."""
+    n = node(A)
+    n.start()
+    n.announce()
+    _S["off_at"] = time.time() + AUTO_OFF
+    _arm(A)
+    A.save_cfg(localsend_on=True)
+
+
+def stop_receiving(A, auto=False):
+    t = _S.pop("timer", None)
+    if t:
         try:
-            node(A).start()
-            node(A).announce()
-        except OSError as e:
-            log(f"Couldn't start receiving: {e}")
-            A.show_toast("Nearby devices could not start (is another LocalSend open?).", "Open", lambda: A.open_localsend())
+            A.root.after_cancel(t)
+        except tk.TclError:
+            pass
+    n = _S["node"]
+    if n:
+        n.stop()
+    _S["node"] = None
+    A.save_cfg(localsend_on=False)
+    log("Receiving turned itself off" if auto else "Receiving is off")
+    if auto:
+        A.show_toast(f"Receiving files turned itself off after {max(1, round(AUTO_OFF / 60))} minutes. Switch it on again in Nearby devices when you need it.", "Open",
+                     lambda: A.open_localsend(), title="Foldwise \u00b7 Nearby devices")
+
+
+def minutes_left():
+    return max(0, -(-int(_S.get("off_at", 0) - time.time()) // 60))
+
+
+def _arm(A):
+    t = _S.pop("timer", None)
+    if t:
+        try:
+            A.root.after_cancel(t)
+        except tk.TclError:
+            pass
+    _S["timer"] = A.root.after(int(max(0.3, min(30, AUTO_OFF / 4)) * 1000), lambda: _check_off(A))
+
+
+def _check_off(A):
+    _S["timer"] = None
+    n = _S["node"]
+    if not (n and n._srv):
+        return
+    if time.time() >= _S.get("off_at", 0):
+        if n.busy():  # never cut a transfer in progress
+            _S["off_at"] = time.time() + 60
+        else:
+            stop_receiving(A, auto=True)
+            return
+    _arm(A)
 
 
 # ------------------------------------------------------------------------------------------------ incoming
@@ -108,8 +163,27 @@ def _ask(A, info):
         win.protocol("WM_DELETE_WINDOW", lambda: answer(False))
         win.bind("<Escape>", lambda e: answer(False))
         win.update_idletasks()
-        win.geometry(f"+{A.root.winfo_rootx() + 80}+{A.root.winfo_rooty() + 80}")
+        w_, h_, sw, sh = win.winfo_reqwidth(), win.winfo_reqheight(), win.winfo_screenwidth(), win.winfo_screenheight()
+        try:  # next to the main window when it is on screen; otherwise (minimised or in the tray Windows reports it at -32000) the middle of the screen
+            on_screen = A.root.state() == "normal" and A.root.winfo_viewable()
+        except tk.TclError:
+            on_screen = False
+        x, y = (A.root.winfo_rootx() + (A.root.winfo_width() - w_) // 2, A.root.winfo_rooty() + 90) if on_screen else ((sw - w_) // 2, (sh - h_) // 3)
+        win.geometry(f"+{max(0, min(sw - w_, x))}+{max(0, min(sh - h_, y))}")
+        win.deiconify()
         win.lift()
+        win.focus_force()
+        win.bell()
+        log(f"{info['alias']} wants to send {n} file(s): waiting for your answer")
+
+        def raise_it():
+            try:
+                win.deiconify()
+                win.lift()
+                win.focus_force()
+            except tk.TclError:
+                pass
+        A.show_toast(f"{info['alias']} wants to send you {n} file{'s' if n != 1 else ''}.", "Show", raise_it, title="Foldwise \u00b7 Nearby devices")
     _later(A, show)
     done.wait(120)
     return res[0]
@@ -130,13 +204,19 @@ def _event(A, kind, d):
         if d["finished"]:
             log(f"Received {r['n']} file(s) from {r['alias']}")
             folder = node(A).receive_dir
-            A.show_toast(f"Received {r['n']} file{'s' if r['n'] != 1 else ''} from {r['alias']}.", "Open folder", lambda: ff_platform.open_path(folder))
+            A.show_toast(f"Received {r['n']} file{'s' if r['n'] != 1 else ''} from {r['alias']}.", "Open folder", lambda: ff_platform.open_path(folder),
+                         title="Foldwise \u00b7 Nearby devices")
             A.refresh()
     elif kind == "cancelled":
         log(f"{d['alias']} cancelled the transfer")
 
 
 # ------------------------------------------------------------------------------------------------ the tool
+def wrap(label, frame, pad=40):
+    """Let a long label wrap at the width of its frame instead of making the whole page wider than the window."""
+    frame.bind("<Configure>", lambda e: label.configure(wraplength=max(220, e.width - pad)), add="+")
+
+
 def open_localsend(A, paths=None):
     win = A.toplevel("Nearby devices", "920x720")
     alive = {"v": True}
@@ -149,7 +229,7 @@ def open_localsend(A, paths=None):
     bt.pack(side="bottom", fill="x")
     ttk.Button(bt, text="Close", command=win.destroy).pack(side="right")
     ttk.Button(bt, text="Tutorial", command=lambda: A.open_howto("localsend")).pack(side="right", padx=8)
-    logw = tk.Text(win, height=7, bg=T["panel"], fg=T["fg"], relief="flat", wrap="word", font=("Consolas", 9), padx=10, pady=8, state="disabled")
+    logw = tk.Text(win, height=7, width=10, bg=T["panel"], fg=T["fg"], relief="flat", wrap="word", font=("Consolas", 9), padx=10, pady=8, state="disabled")
     logw.pack(side="bottom", fill="x", padx=16, pady=(0, 6))
     _S["logw"] = logw
     ttk.Label(win, text="ACTIVITY", style="DetHead.TLabel", background=T["bg"]).pack(side="bottom", anchor="w", padx=18)
@@ -159,50 +239,54 @@ def open_localsend(A, paths=None):
     top = ttk.Frame(win, padding=(18, 14, 18, 4))
     top.pack(fill="x")
     ttk.Label(top, text="Nearby devices", font=("Segoe UI", 15, "bold")).pack(anchor="w")
-    ttk.Label(top, text="Send files to phones and PCs on the same network that run LocalSend (free, for Android, iPhone, Windows, Mac and Linux), "
-              "or receive from them. Nothing is sent over the internet.", wraplength=840, style="DetKey.TLabel", background=T["bg"]).pack(anchor="w", pady=(2, 8))
+    desc = ttk.Label(top, text="Send files to phones and PCs on the same network that run LocalSend (free, for Android, iPhone, Windows, Mac and Linux), "
+                     "or receive from them. Nothing is sent over the internet.", wraplength=420, style="DetKey.TLabel", background=T["bg"])
+    desc.pack(anchor="w", pady=(2, 8))
+    wrap(desc, top)
     rv = tk.BooleanVar(value=listening())
     row1 = ttk.Frame(top)
     row1.pack(fill="x")
     ttk.Checkbutton(row1, text="Receive files from nearby devices", variable=rv, command=lambda: toggle()).pack(side="left")
-    ttk.Label(row1, text="   Visible as").pack(side="left")
+    row1b = ttk.Frame(top)
+    row1b.pack(fill="x", pady=(6, 0))
+    ttk.Label(row1b, text="Visible as").pack(side="left")
     namev = tk.StringVar(value=n.alias)
-    ne = ttk.Entry(row1, textvariable=namev, width=22)
+    ne = ttk.Entry(row1b, textvariable=namev, width=20)
     ne.pack(side="left", padx=6)
-    ttk.Button(row1, text="Save name", command=lambda: save_name()).pack(side="left")
+    ttk.Button(row1b, text="Save name", command=lambda: save_name()).pack(side="left")
     row2 = ttk.Frame(top)
     row2.pack(fill="x", pady=(6, 0))
     dirv = tk.StringVar(value=n.receive_dir)
-    ttk.Label(row2, text="Received files go to").pack(side="left")
-    ttk.Label(row2, textvariable=dirv, foreground=T["accent"]).pack(side="left", padx=8)
-    ttk.Button(row2, text="Change…", command=lambda: change_dir()).pack(side="left")
+    ttk.Label(row2, text="Received files go to:").pack(side="left")
+    ttk.Button(row2, text="Change…", command=lambda: change_dir()).pack(side="left", padx=(8, 0))
     ttk.Button(row2, text="Open", command=lambda: (os.makedirs(n.receive_dir, exist_ok=True), ff_platform.open_path(n.receive_dir))).pack(side="left", padx=8)
+    where = ttk.Label(top, textvariable=dirv, foreground=T["accent"], wraplength=420)
+    where.pack(anchor="w")
+    wrap(where, top)
     status = tk.StringVar()
-    ttk.Label(top, textvariable=status, style="DetKey.TLabel", background=T["bg"]).pack(anchor="w", pady=(6, 0))
+    stl = ttk.Label(top, textvariable=status, style="DetKey.TLabel", background=T["bg"], wraplength=420)
+    stl.pack(anchor="w", pady=(6, 0))
+    wrap(stl, top)
 
     def show_status():
         if listening():
             status.set(f"On: visible as “{n.alias}” at {', '.join(LS.local_ips()[:2])}, port {n.port} ({n.protocol.upper()}). Every incoming transfer asks you first. "
-                       "The first time, Windows may ask to allow Foldwise on the network: choose Private networks.")
+                       f"It switches itself off in about {minutes_left()} min. The first time, Windows may ask to allow Foldwise on the network: choose Private networks.")
         else:
             status.set("Off: nobody can send to this PC. You can still send to others below.")
 
     def toggle():
         if rv.get():
             try:
-                n.start()
-                n.announce()
+                start_receiving(A)
             except OSError as e:
                 rv.set(False)
                 messagebox.showerror("Nearby devices", f"Couldn't start receiving: {e}\n\nAnother LocalSend may already be open on this PC.", parent=A.root)
                 return
-            A.save_cfg(localsend_on=True)
-            log("Receiving is on")
+            log("Receiving is on (it switches itself off after " + str(max(1, round(AUTO_OFF / 60))) + " minutes)")
+            check_network(auto=True)
         else:
-            n.stop()
-            _S["node"] = None
-            A.save_cfg(localsend_on=False)
-            log("Receiving is off")
+            stop_receiving(A)
             node_after_stop()
         show_status()
 
@@ -232,7 +316,7 @@ def open_localsend(A, paths=None):
     tvf = tk.Frame(mid, bg=T["bg"])
     tvf.pack(fill="both", expand=True, pady=(4, 6))
     tv = ttk.Treeview(tvf, columns=("addr", "kind"), show="tree headings", selectmode="browse", height=5)
-    for c, text, w, anc in (("#0", "Device", 320, "w"), ("addr", "Address", 200, "w"), ("kind", "Type", 120, "w")):
+    for c, text, w, anc in (("#0", "Device", 200, "w"), ("addr", "Address", 150, "w"), ("kind", "Type", 90, "w")):
         tv.heading(c, text=text, anchor=anc)
         tv.column(c, width=w, anchor=anc, stretch=(c == "#0"))
     tv.pack(fill="both", expand=True)
@@ -253,6 +337,43 @@ def open_localsend(A, paths=None):
             tv.selection_set(next(iter(peers)))
     _S["refresh"] = lambda: alive["v"] and refresh_list()
 
+    def check_network(auto=False):
+        msg.set("Checking your network…")
+
+        def work():
+            nets, blocks = ff_platform.network_report(sys.executable)
+            res = LS.explain(nets, blocks, listening(), LS.local_ips(), len(n.peers()), n.scanned)
+            _later(A, lambda: alive["v"] and done(res))
+
+        def done(res):
+            bad = [t for lvl, t in res if lvl == "bad"]
+            msg.set(bad[0] if bad else "Network check finished: nothing is blocking file sharing.")
+            if bad or not auto:
+                report(res)
+        threading.Thread(target=work, daemon=True).start()
+
+    def report(res):
+        d = tk.Toplevel(A.root)
+        d.title("Why can't I see devices?")
+        d.configure(bg=T["bg"])
+        d.transient(A.root)
+        f = tk.Frame(d, bg=T["bg"], padx=22, pady=16)
+        f.pack(fill="both", expand=True)
+        for lvl, text in res:
+            row = tk.Frame(f, bg=T["bg"])
+            row.pack(fill="x", pady=4)
+            tk.Label(row, text={"bad": "\u2716", "warn": "\u26A0", "ok": "\u2714"}[lvl], fg={"bad": "#f87171", "warn": "#facc15", "ok": "#4ade80"}[lvl],
+                     bg=T["bg"], font=("Segoe UI", 12, "bold"), width=2).pack(side="left", anchor="n")
+            tk.Label(row, text=text, bg=T["bg"], fg=T["fg"], wraplength=520, justify="left", anchor="w").pack(side="left", fill="x", expand=True)
+        b = tk.Frame(f, bg=T["bg"])
+        b.pack(fill="x", pady=(12, 0))
+        ttk.Button(b, text="Open Wi-Fi settings", command=lambda: ff_platform.open_os_settings("wifi")).pack(side="left")
+        ttk.Button(b, text="Open firewall settings", command=lambda: ff_platform.open_os_settings("firewall")).pack(side="left", padx=8)
+        ttk.Button(b, text="Close", command=d.destroy).pack(side="right")
+        d.update_idletasks()
+        d.geometry(f"+{A.root.winfo_rootx() + 90}+{A.root.winfo_rooty() + 70}")
+        _S["report"] = d
+
     def find():
         msg.set("Looking for devices…")
 
@@ -263,8 +384,14 @@ def open_localsend(A, paths=None):
             except Exception as e:  # noqa
                 _later(A, lambda e=e: msg.set(f"Search failed: {e}"))
                 return
-            _later(A, lambda: alive["v"] and (refresh_list(), msg.set(f"{len(n.peers())} device(s) found." if n.peers() else
-                                               "No devices found. On the other device open LocalSend and keep it in front; both must be on the same Wi-Fi.")))
+            def shown():
+                refresh_list()
+                if n.peers():
+                    msg.set(f"{len(n.peers())} device(s) found.")
+                else:
+                    log("Searched " + ", ".join(n.scanned) + ": no device answered")
+                    msg.set("No devices found. Press “Check my network” to see what might be in the way.")
+            _later(A, lambda: alive["v"] and shown())
         threading.Thread(target=work, daemon=True).start()
 
     def add_by_address():
@@ -281,20 +408,27 @@ def open_localsend(A, paths=None):
     srow.pack(fill="x")
     ttk.Button(srow, text="Search again", command=find).pack(side="left")
     ttk.Button(srow, text="Add by address…", command=add_by_address).pack(side="left", padx=8)
+    ttk.Button(srow, text="Check my network", command=check_network).pack(side="left")
     pick = ttk.Frame(mid)
     pick.pack(fill="x", pady=(10, 0))
     ttk.Label(pick, text="SEND", style="DetHead.TLabel", background=T["bg"]).pack(side="left")
     what = tk.StringVar()
-    ttk.Label(pick, textvariable=what, style="DetKey.TLabel", background=T["bg"]).pack(side="left", padx=10)
+    wl = ttk.Label(pick, textvariable=what, style="DetKey.TLabel", background=T["bg"], wraplength=300)
+    wl.pack(side="left", padx=10)
+    wrap(wl, mid, 150)
     brow = ttk.Frame(mid)
     brow.pack(fill="x", pady=4)
     ttk.Button(brow, text="Files…", command=lambda: choose(files=True)).pack(side="left")
     ttk.Button(brow, text="A folder…", command=lambda: choose(files=False)).pack(side="left", padx=8)
     ttk.Button(brow, text="Selected in Foldwise", command=lambda: use_selection()).pack(side="left")
-    go = ttk.Button(brow, text="Send to the selected device", style="Accent.TButton", command=lambda: send())
-    go.pack(side="right")
+    grow = ttk.Frame(mid)  # its own row: the main button must never slide out of view in a narrow window
+    grow.pack(fill="x", pady=(2, 4))
+    go = ttk.Button(grow, text="Send to the selected device", style="Accent.TButton", command=lambda: send())
+    go.pack(side="left")
     pb = ttk.Progressbar(mid, mode="determinate", maximum=100)
-    ttk.Label(mid, textvariable=msg, wraplength=840).pack(anchor="w", pady=(2, 0))
+    ml = ttk.Label(mid, textvariable=msg, wraplength=420)
+    ml.pack(anchor="w", pady=(2, 0))
+    wrap(ml, mid)
 
     def show_what():
         k = len(st["paths"])
@@ -368,8 +502,15 @@ def open_localsend(A, paths=None):
     if node(A).peers() == [] and listening():
         find()
 
-    def tick():  # peers found by multicast show up by themselves
+    def tick():  # peers found by multicast show up by themselves; the switch-off timer is reflected here
+        nonlocal n
         if alive["v"]:
+            cur = node(A)
+            if cur is not n:  # receiving switched itself off: the node was replaced
+                n = cur
+            if rv.get() != listening():
+                rv.set(listening())
+            show_status()
             if len(n.peers()) != len(peers):
                 refresh_list()
             win.after(3000, tick)

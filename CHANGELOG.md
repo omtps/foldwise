@@ -1,5 +1,12 @@
 # Foldwise changelog
 
+## 1.0.2-1 - 2026-11-01
+- Nearby devices: the question 'X wants to send you files' now always shows on screen (it opened off-screen when Foldwise was minimised) and a pop-up points at it
+- Nearby devices works with the real LocalSend apps: Foldwise now presents the certificate they require, and the new 'Check my network' button explains Public networks and firewall blocks
+- Receiving files switches itself off after 20 minutes (never in the middle of a transfer) and no longer starts by itself at launch
+- The Nearby devices page fits narrow windows: the Send button no longer hides to the right
+- Pop-up buttons (crash report, received files, update) now work; version numbers like 1.0.2-1 are understood
+
 ## 1.0.2 - 2026-11-01
 - Nearby devices: send files to and receive from phones and PCs running the free LocalSend app (or another Foldwise) on your network; right-click files > Send to a nearby device; receiving is off until you turn it on and always asks first
 - Faster copying: Foldwise uses Windows' own copy routine and copies many small files at once (measured here: 4000 small files 3.5x faster, a 1 GB file about 4x faster before the drive itself is the limit)

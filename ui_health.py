@@ -845,7 +845,9 @@ def open_autoclean(A):
 
 def open_action(A, act):
     try:
-        if act == "cleaner":
+        if callable(act):  # a toast whose button runs a function (crash report, received files, ...)
+            act()
+        elif act == "cleaner":
             A.open_cleaner()
         elif act == "largest":
             A.open_largest()
@@ -875,7 +877,7 @@ def open_action(A, act):
         A.status.set(f"Couldn't open that: {e}")
 
 
-def show_toast(A, text, label, action):
+def show_toast(A, text, label, action, title="Foldwise health"):
     """A small corner pop-up (never steals focus) for low disk space and overdue backups."""
     t = tk.Toplevel(A.root)
     t.overrideredirect(True)
@@ -883,7 +885,7 @@ def show_toast(A, text, label, action):
     t.configure(bg=T["accent"])
     inner = tk.Frame(t, bg=T["panel"])
     inner.pack(padx=2, pady=2)
-    tk.Label(inner, text="❤  Foldwise health", fg=T["accent"], bg=T["panel"],
+    tk.Label(inner, text=title, fg=T["accent"], bg=T["panel"],
              font=("Segoe UI", A.cfg["font_size"] - 1, "bold")).pack(anchor="w", padx=14, pady=(10, 0))
     tk.Label(inner, text=text, wraplength=360, justify="left", fg=T["fg"], bg=T["panel"],
              font=("Segoe UI", A.cfg["font_size"])).pack(anchor="w", padx=14, pady=8)

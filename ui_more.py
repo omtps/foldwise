@@ -321,7 +321,7 @@ HOWTO = {
          "and press 'Send to the selected device'. The other device asks to accept; you can also right-click files in Foldwise > "
          "'Send to a nearby device…'."),
         ("4. Receiving here", "Tick 'Receive files from nearby devices'. Other devices can then see this PC under the name you chose. Every "
-         "incoming transfer asks you to Accept or Decline first, and the files are saved in the folder shown (a 'Foldwise received' folder in your Downloads "
+         "incoming transfer asks you to Accept or Decline first (and receiving switches itself off after 20 minutes, never in the middle of a transfer), and the files are saved in the folder shown (a 'Foldwise received' folder in your Downloads "
          "unless you change it). Untick it and this PC is invisible again."),
         ("5. Windows Firewall", "The first time you turn receiving on, Windows may ask to allow Foldwise on the network. Choose 'Private networks' "
          "only. If other devices still cannot see this PC, use 'Add by address…' on them with this PC's address shown on the tool."),

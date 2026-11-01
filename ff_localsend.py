@@ -180,10 +180,11 @@ class Node:
         self.on_request, self.on_event = on_request or (lambda info: False), on_event or (lambda kind, data: None)
         self.multicast, self.data_dir = multicast, data_dir
         self.fingerprint = secrets.token_hex(16)
-        self.ctx, self.protocol = None, "http"
+        self.ctx, self.protocol, self.client_ctx = None, "http", None
         self._peers, self._sessions = {}, {}
         self._lock = threading.Lock()
         self._srv = self._udp = None
+        self.scanned = []
         self._stop = threading.Event()
         if use_tls:
             try:
@@ -191,6 +192,11 @@ class Node:
                 self.ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
                 self.ctx.load_cert_chain(cert, key)
                 self.protocol = "https"
+                # the LocalSend apps demand a certificate from whoever connects to them: ours goes along with every outgoing request
+                self.client_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                self.client_ctx.check_hostname = False
+                self.client_ctx.verify_mode = ssl.CERT_NONE
+                self.client_ctx.load_cert_chain(cert, key)
             except Exception:  # noqa - without the cryptography library the plain-HTTP mode of the protocol is used
                 self.ctx, self.protocol = None, "http"
 
@@ -242,6 +248,11 @@ class Node:
     def peers(self):
         with self._lock:
             return sorted(self._peers.values(), key=lambda p: p["alias"].lower())
+
+    def busy(self):
+        """True while a transfer is going on (an accepted session that is not finished)."""
+        with self._lock:
+            return any(v["state"] == "open" for v in self._sessions.values())
 
     def forget_peers(self):
         with self._lock:
@@ -314,25 +325,37 @@ class Node:
                 return self._remember(dict(data, port=data.get("port") or port, protocol=data.get("protocol") or proto), ip)
         return None
 
-    def scan(self, extra_ips=(), timeout=0.5):
+    def scan(self, extra_ips=(), timeout=0.5, port=PORT):
         """Fallback discovery: try every address of the local /24 networks (what the apps do when multicast is blocked)."""
-        targets = []
+        targets, self.scanned = [], []
         for ip in local_ips():
             try:
                 net = ipaddress.ip_network(ip + "/24", strict=False)
             except ValueError:
                 continue
+            self.scanned.append(str(net))
             targets += [str(h) for h in net.hosts() if str(h) != ip]
         targets = list(dict.fromkeys(list(extra_ips) + targets))
         with ThreadPoolExecutor(48) as ex:
-            list(ex.map(lambda ip: self.probe(ip, PORT, timeout), targets))
+            list(ex.map(lambda ip: self.probe(ip, port, timeout), targets))
         return self.peers()
 
     # ---- talking to another device
+    def _client_context(self):
+        if self.client_ctx is not None:
+            return self.client_ctx
+        ctx = ssl._create_unverified_context()
+        try:  # no certificate of our own (plain-HTTP mode): make one anyway so HTTPS peers that insist on it can still be reached
+            cert, key, _fp = make_cert(self.data_dir)
+            ctx.load_cert_chain(cert, key)
+        except Exception:  # noqa - then the connection simply goes without
+            pass
+        return ctx
+
     def _request(self, peer, method, path, body=None, timeout=10, raw=None, headers=None):
         """One request to a peer; (status, json-or-None). HTTPS peers are checked against their fingerprint when they announced one."""
         if peer["protocol"] == "https":
-            c = http.client.HTTPSConnection(peer["ip"], peer["port"], timeout=timeout, context=ssl._create_unverified_context())
+            c = http.client.HTTPSConnection(peer["ip"], peer["port"], timeout=timeout, context=self._client_context())
         else:
             c = http.client.HTTPConnection(peer["ip"], peer["port"], timeout=timeout)
         try:
@@ -416,7 +439,7 @@ class Node:
 
     def _upload_one(self, peer, sid, fid, token, meta, on_bytes, cancel):
         if peer["protocol"] == "https":
-            c = http.client.HTTPSConnection(peer["ip"], peer["port"], timeout=60, context=ssl._create_unverified_context())
+            c = http.client.HTTPSConnection(peer["ip"], peer["port"], timeout=60, context=self._client_context())
         else:
             c = http.client.HTTPConnection(peer["ip"], peer["port"], timeout=60)
         try:
@@ -536,3 +559,27 @@ class Node:
                 s["state"] = "cancelled"
         if s:
             self.on_event("cancelled", {"sid": sid, "alias": s["alias"]})
+
+
+def explain(nets, blocks, listening, ips, peers, scanned=()):
+    """[(level, text)] with level 'bad' | 'warn' | 'ok': what stands in the way of seeing nearby devices or being seen, in plain words."""
+    out = []
+    public = [n for n, c in nets if str(c).lower() == "public"]
+    if public:
+        out.append(("bad", f"Windows treats your network “{public[0]}” as Public. On a Public network Windows blocks other devices from reaching this PC, "
+                           "so nobody can see it or send to it. If this is your own home or office network, switch it to Private "
+                           "(Settings > Network & internet > Wi-Fi > your network > Network profile type > Private)."))
+    elif nets:
+        out.append(("ok", f"Your network “{nets[0][0]}” is a {nets[0][1]} network: other devices may reach this PC."))
+    if blocks:
+        names = ", ".join(sorted({b[0] for b in blocks}))
+        out.append(("bad", f"The Windows Firewall has a Block rule for this program ({names}) that applies to: {', '.join(sorted({b[1] for b in blocks}))}. "
+                           "A Block rule always wins over an Allow rule. Remove it in Windows Security > Firewall & network protection > Advanced settings > "
+                           "Inbound Rules, or use a Private network."))
+    out.append(("ok" if listening else "warn", "Receiving is on: this PC listens on port 53317." if listening else "Receiving is off, so other devices cannot see this PC. You can still send to them."))
+    out.append(("ok" if peers else "warn", f"{peers} device(s) found." if peers else
+                "No device answered. On the other device open LocalSend and keep it in the foreground. Phone and PC must be on the same Wi-Fi and the router "
+                "must allow devices to talk to each other (turn off 'AP isolation' / 'guest network' / 'client isolation')."))
+    if scanned:
+        out.append(("ok", "Searched these networks: " + ", ".join(scanned) + ". A phone on a different network (for example the guest Wi-Fi) will not show up."))
+    return out
