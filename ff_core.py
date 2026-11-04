@@ -1,5 +1,5 @@
-"""Foldwise core: the instant file index and search, configuration, theme, Windows helpers (Recycle Bin, tray,
-hotkey, shortcuts) and shared utilities. No GUI-window code lives here - see foldwise.py and the ui_*.py modules."""
+"""Pinefiles core: the instant file index and search, configuration, theme, Windows helpers (Recycle Bin, tray,
+hotkey, shortcuts) and shared utilities. No GUI-window code lives here - see pinefiles.py and the ui_*.py modules."""
 import os
 import re
 import sqlite3
@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 import ff_extras as X
+from ff_update import LEGACY_NAMES  # earlier names of this program: their data folders and shortcuts are carried over
 
 try:
     import ff_shell as Sh
@@ -19,13 +20,20 @@ except Exception:  # not Windows / COM unavailable: those features are simply of
 
 _HERE = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 # Portable mode: an empty file called portable.flag next to the program keeps ALL data in .\data (e.g. on a USB stick).
-LEGACY_NAME = "FileFinder"  # Foldwise used to be called this: its data folder, shortcuts and scheduled names are carried over
 
 
 def _migrate_data_dir(new):
-    """Carry the old FileFinder data folder (index, settings, tags, ...) over to the Foldwise folder: one rename on the same drive.
+    """Carry the data folder of an earlier name (index, settings, tags, ...) over to the Pinefiles folder: one rename on the same drive.
     If something still holds files open the old folder is simply used again until the next start - nothing is ever lost."""
-    old = new.parent / LEGACY_NAME
+    for name in LEGACY_NAMES:
+        got = _carry_over(new.parent / name, new)
+        if got != new:
+            return got
+    return new
+
+
+def _carry_over(old, new):
+    """Move the folder `old` into `new`; returns the folder to use (`new`, or `old` when it could not be moved)."""
     if not old.is_dir() or old == new:
         return new
     try:
@@ -55,7 +63,7 @@ def _migrate_data_dir(new):
     return new
 
 
-DB_DIR = _HERE / "data" if (_HERE / "portable.flag").exists() else _migrate_data_dir(Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Foldwise")
+DB_DIR = _HERE / "data" if (_HERE / "portable.flag").exists() else _migrate_data_dir(Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Pinefiles")
 DB_PATH = DB_DIR / "index.db"
 SKIP_DIRS = {"$recycle.bin", "system volume information", "winsxs", "$windows.~bt", "$windows.~ws"}
 MAX_RESULTS = 2000
@@ -332,7 +340,7 @@ def low_priority():
 
 
 def log_error(text):
-    """Append to %LOCALAPPDATA%\\Foldwise\\error.log (pythonw has no console, so errors would vanish)."""
+    """Append to %LOCALAPPDATA%\\Pinefiles\\error.log (pythonw has no console, so errors would vanish)."""
     try:
         DB_DIR.mkdir(parents=True, exist_ok=True)
         with open(DB_DIR / "error.log", "a", encoding="utf-8") as f:
@@ -494,9 +502,9 @@ def _png(n, rgba):
 
 
 def ensure_icon():
-    """Create foldwise.ico (16-256px) next to the index on first run; returns its path."""
+    """Create pinefiles.ico (16-256px) next to the index on first run; returns its path."""
     import struct
-    path = DB_DIR / "foldwise.ico"
+    path = DB_DIR / "pinefiles.ico"
     if path.exists():
         return path
     DB_DIR.mkdir(parents=True, exist_ok=True)
@@ -517,7 +525,7 @@ PORT = 47653
 
 
 def signal_running_instance(path=None):
-    """If Foldwise is already running, ask it to show itself and return True."""
+    """If Pinefiles is already running, ask it to show itself and return True."""
     import socket
     try:
         with socket.create_connection(("127.0.0.1", PORT), timeout=0.5) as s:
@@ -638,7 +646,7 @@ def register_hotkey(callback):
     return result.get("label")
 
 
-def start_tray(on_show, on_quit, tip="Foldwise"):
+def start_tray(on_show, on_quit, tip="Pinefiles"):
     """Notification-area icon: click = show, right-click = Show / Quit. Returns True if created."""
     if os.name != "nt":
         return False
@@ -680,7 +688,7 @@ def start_tray(on_show, on_quit, tip="Foldwise"):
                 on_show()
             elif lp == 0x205:  # WM_RBUTTONUP
                 m = u.CreatePopupMenu()
-                u.AppendMenuW(m, 0, 1, "Show Foldwise")
+                u.AppendMenuW(m, 0, 1, "Show Pinefiles")
                 u.AppendMenuW(m, 0, 2, "Quit")
                 pt = wintypes.POINT()
                 u.GetCursorPos(ctypes.byref(pt))
@@ -699,9 +707,9 @@ def start_tray(on_show, on_quit, tip="Foldwise"):
 
     def loop():
         wc = WC()
-        wc.proc, wc.inst, wc.cls = cb, k.GetModuleHandleW(None), "FoldwiseTray"
+        wc.proc, wc.inst, wc.cls = cb, k.GetModuleHandleW(None), "PinefilesTray"
         u.RegisterClassW(ctypes.byref(wc))
-        hwnd = u.CreateWindowExW(0, "FoldwiseTray", "Foldwise", 0, 0, 0, 0, 0, None, None, wc.inst, None)
+        hwnd = u.CreateWindowExW(0, "PinefilesTray", "Pinefiles", 0, 0, 0, 0, 0, None, None, wc.inst, None)
         nid.cbSize, nid.hWnd, nid.uID = ctypes.sizeof(NID), hwnd, 1
         nid.uFlags, nid.uCallbackMessage = 0x1 | 0x2 | 0x4, CB
         nid.hIcon = u.LoadImageW(None, str(ensure_icon()), 1, 16, 16, 0x10) or u.LoadIconW(None, 32516)
@@ -744,18 +752,18 @@ def _backup_path():
 
 
 def folder_opener_state():
-    """'foldwise' (folders open here), 'broken' (set, but the program it points to is gone) or 'windows' (nothing of ours is set)."""
+    """'pinefiles' (folders open here), 'broken' (set, but the program it points to is gone) or 'windows' (nothing of ours is set)."""
     import winreg
     cur = _reg_read(winreg, FOLDER_VERBS[0] + "\\command")
     cmd = (cur or {}).get("default") or ""
-    if "foldwise" not in cmd.lower():
+    if not any(n.lower() in cmd.lower() for n in ("Pinefiles",) + LEGACY_NAMES[:1]):  # (an earlier name's script is gone: reported as broken, then healed)
         return "windows"
     quoted = re.findall(r'"([^"]+)"', cmd)
-    return "foldwise" if quoted and all(os.path.exists(q) for q in quoted if q != "%1") else "broken"
+    return "pinefiles" if quoted and all(os.path.exists(q) for q in quoted if q != "%1") else "broken"
 
 
 def set_default_folder_opener(enable):
-    """Registry switch (current user only, nothing needs admin): programs that ask Windows to open/explore a folder get Foldwise.
+    """Registry switch (current user only, nothing needs admin): programs that ask Windows to open/explore a folder get Pinefiles.
     What was set before is saved first and put back when you switch off, so it is fully reversible. Runs only when YOU choose it
     (Customize > Default file manager, or --set-default-folder-opener / --restore-default-folder-opener)."""
     import json
@@ -810,7 +818,7 @@ def set_default_folder_opener(enable):
 
 
 def heal_default_folder_opener():
-    """At start: if Foldwise is the default folder opener but its program is gone (deleted, moved), switch back to Windows so folder
+    """At start: if Pinefiles is the default folder opener but its program is gone (deleted, moved), switch back to Windows so folder
     links never end up broken. Returns True when it did."""
     try:
         if folder_opener_state() == "broken":
@@ -822,29 +830,30 @@ def heal_default_folder_opener():
 
 
 def launch_cmd():
-    """argv that starts this program: the packaged exe, or pythonw + foldwise.py when run from source."""
+    """argv that starts this program: the packaged exe, or pythonw + pinefiles.py when run from source."""
     if getattr(sys, "frozen", False):
         return [str(Path(sys.executable))]
     exe = Path(sys.executable)
     pyw = exe.with_name("pythonw.exe")
-    return [str(pyw if pyw.exists() else exe), str(Path(__file__).resolve().with_name("foldwise.py"))]
+    return [str(pyw if pyw.exists() else exe), str(Path(__file__).resolve().with_name("pinefiles.py"))]
 
 
 def shortcut_paths():
     start = Path(os.environ["APPDATA"]) / "Microsoft/Windows/Start Menu/Programs"
     startup = start / "Startup"
-    return start / "Foldwise.lnk", startup / "Foldwise.lnk"
+    return start / "Pinefiles.lnk", startup / "Pinefiles.lnk"
 
 
 def migrate_shortcuts():
-    """Foldwise used to be FileFinder: swap the old Start Menu / Startup shortcuts for new ones (the old ones point at the old script name)."""
+    """Swap the Start Menu / Startup shortcuts of an earlier name for new ones (the old ones point at the old script name)."""
     try:
         start, startup = shortcut_paths()
-        for old, new, extra in ((start.parent / (LEGACY_NAME + ".lnk"), start, ""), (startup.parent / (LEGACY_NAME + ".lnk"), startup, "--hidden")):
-            if old.exists():
-                if not new.exists():
-                    make_shortcut(new, extra)
-                old.unlink(missing_ok=True)
+        for name in LEGACY_NAMES:
+            for old, new, extra in ((start.parent / (name + ".lnk"), start, ""), (startup.parent / (name + ".lnk"), startup, "--hidden")):
+                if old.exists():
+                    if not new.exists():
+                        make_shortcut(new, extra)
+                    old.unlink(missing_ok=True)
     except Exception as e:  # noqa - a shortcut problem must never stop the program
         log_error(f"shortcut migration: {e}")
 
@@ -854,7 +863,7 @@ def make_shortcut(lnk, extra=""):
     args = " ".join([f'"{r}"' for r in rest] + ([extra] if extra else []))
     ps = (f"$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{lnk}');"
           f"$s.TargetPath='{target}';$s.Arguments='{args}';$s.WorkingDirectory='{Path(target).parent}';"
-          f"$s.Description='Foldwise';$s.IconLocation='{ensure_icon()}';$s.Save()")
+          f"$s.Description='Pinefiles';$s.IconLocation='{ensure_icon()}';$s.Save()")
     subprocess.run(["powershell", "-NoProfile", "-Command", ps], check=True, creationflags=0x08000000)
 
 
@@ -876,10 +885,10 @@ PALETTES = {
                   accent="#2563eb", line="#d1d5db", alt="#f9fafb", dir="#1d4ed8"),
 }
 ACCENT_SWATCHES = ["#58a6ff", "#a78bfa", "#f472b6", "#fb923c", "#facc15", "#4ade80", "#2dd4bf", "#f87171"]
-DEFAULT_CFG = dict(pinned_tools=[], seen_version="", zebra=True, date_fmt="31/12/2026", clock_12h=False, col_w={}, show_tutorial=True, remember_window=False, win_geo="", win_max=False, recent_tools=[], setup_done=False, rounded=True, corner_radius=8, ui_font="Segoe UI", spacing="normal", sidebar_w=220, show_chips=True, theme="Follow Windows", accent="", font_size=10, row_height=30, show_hidden=False,
+DEFAULT_CFG = dict(alerts=[], remember_views=True, folder_views={}, pinned_tools=[],seen_version="", zebra=True, date_fmt="31/12/2026", clock_12h=False, col_w={}, show_tutorial=True, remember_window=False, win_geo="", win_max=False, recent_tools=[], setup_done=False, rounded=True, corner_radius=8, ui_font="Segoe UI", spacing="normal", sidebar_w=220, show_chips=True, theme="Follow Windows", accent="", font_size=10, row_height=30, show_hidden=False,
                    folder_sizes=False, details_open=False, confirm_delete=True, folders_first=True,
                    start="home", last_folder="", pins=[], hotkey="", real_icons=True, live_index=True, win_e=False, view_grid=False, recent_dirs=[], visits={}, tabs=[], tab_i=0,
-                   restore_tabs=False, content_index=False, frec={}, recent_ignore=[], sidebar_recent=False, sidebar_recent_n=4, search_history=[], health_alerts=False, space_history={}, backups=[], alerted={}, cleaner_protected=[], weekly_summary=False, last_weekly=0, workspaces={}, last_score=None, autoclean=False, autoclean_days=7, last_autoclean=0, autoclean_log=[], ocr_pdfs=False, notify_url="", welcomed=False, last_folder_snap=0, crash_seen=0, game_offer=True, game_best={}, localsend_on=False, localsend_name="", localsend_dir="", localsend_port=53317,malware_ignore=[], malware_seen=[], malware_weekly=False, last_malware=0, vt_key="", mb_key="", online_lookup=False, update_url="", last_update_check=0, ftp_host="", ftp_user="", seen_threats=[], threats_init=False,
+                   restore_tabs=False, content_index=False, frec={}, recent_ignore=[], sidebar_recent=False, sidebar_recent_n=4, search_history=[], health_alerts=False, space_history={}, backups=[], alerted={}, cleaner_protected=[], weekly_summary=False, last_weekly=0, workspaces={}, last_score=None, autoclean=False, autoclean_days=7, last_autoclean=0, autoclean_log=[], ocr_pdfs=False, notify_url="", welcomed=False, last_folder_snap=0, crash_seen=0, game_offer=True, game_best={}, localsend_on=False, localsend_name="", localsend_dir="", localsend_port=53317, verify_copies=False, speed_results={}, last_wear_snap=0, rules=[], rules_on=False, custom_themes={}, keys={}, skip_online_only=True, timeline_folder="",malware_ignore=[], malware_seen=[], malware_weekly=False, last_malware=0, vt_key="", mb_key="", online_lookup=False, update_url="", last_update_check=0, ftp_host="", ftp_user="", seen_threats=[], threats_init=False,
                    saved={}, recent=[])
 T = {}
 
@@ -1243,24 +1252,26 @@ class ThemedAsk:
 
 
 TAGS = None  # the Tags store, set by run_gui (ff_core.TAGS = ...)
+NOTES = None  # the Notes store (ff_notes.Notes), set by run_gui; the note: search token reads it
 _search_core = search
 
 
 def search(con, query, limit=MAX_RESULTS, scope=None, exts=None, files_only=False):
-    """search() plus: ext list / files-only filters (content search) and tag: / label: tokens."""
+    """search() plus: ext list / files-only filters (content search) and tag: / label: / note: tokens."""
     if exts:
         query += " ext:" + ",".join(exts)
     if files_only:
         query += " type:file"
     toks = X.tokenize(query)
-    tag_toks = [t for t in toks if t.lower().startswith(("tag:", "label:"))]
+    tag_toks = [t for t in toks if t.lower().startswith(("tag:", "label:", "note:"))]
     if tag_toks and TAGS is not None:
         rest = " ".join(t for t in toks if t not in tag_toks)
         wanted = None
         for t in tag_toks:
             k, _, v = t.partition(":")
             v = v.strip('"').lower()
-            got = set(TAGS.paths_for(tag=v) if k.lower() == "tag" else TAGS.paths_for(color=v))
+            k = k.lower()
+            got = set(NOTES.paths_for(v) if k == "note" and NOTES is not None else [] if k == "note" else TAGS.paths_for(tag=v) if k == "tag" else TAGS.paths_for(color=v))
             wanted = got if wanted is None else wanted & got
         wanted = wanted or set()
         if rest.strip():

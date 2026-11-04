@@ -1,7 +1,7 @@
-"""Hand Foldwise.exe to your other computers: a tiny download server for your home network, and a USB/folder export.
+"""Hand Pinefiles.exe to your other computers: a tiny download server for your home network, and a USB/folder export.
 
 The server serves ONLY three things, all behind a random access code in the address: a download page, the exe itself and an
-update.json manifest (so the other PC can use Foldwise's own update check). It is read-only and you start/stop it yourself.
+update.json manifest (so the other PC can use Pinefiles's own update check). It is read-only and you start/stop it yourself.
 """
 import hashlib
 import http.server
@@ -36,11 +36,11 @@ def lan_addresses():
 
 
 def source_exe():
-    """The exe to hand out: ourselves when packaged, else dist\\Foldwise.exe next to the sources."""
+    """The exe to hand out: ourselves when packaged, else dist\\Pinefiles.exe next to the sources."""
     me = ff_update.exe_path()
     if me:
         return me
-    p = Path(__file__).resolve().parent / "dist" / "Foldwise.exe"
+    p = Path(__file__).resolve().parent / "dist" / "Pinefiles.exe"
     return p if p.exists() else None
 
 
@@ -50,20 +50,20 @@ def manifest_for(exe, base_url=""):
     with open(exe, "rb") as f:
         for b in iter(lambda: f.read(1 << 20), b""):
             h.update(b)
-    return {"version": ff_update.APP_VERSION, "url": (base_url.rstrip("/") + "/Foldwise.exe") if base_url else "Foldwise.exe", "sha256": h.hexdigest(),
-            "notes": "; ".join(next((n for v, n in ff_update.WHATS_NEW if v == ff_update.APP_VERSION), [])) or f"Foldwise {ff_update.APP_VERSION}"}
+    return {"version": ff_update.APP_VERSION, "url": (base_url.rstrip("/") + "/Pinefiles.exe") if base_url else "Pinefiles.exe", "sha256": h.hexdigest(),
+            "notes": "; ".join(next((n for v, n in ff_update.WHATS_NEW if v == ff_update.APP_VERSION), [])) or f"Pinefiles {ff_update.APP_VERSION}"}
 
 
-PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Foldwise</title>
+PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Pinefiles</title>
 <body style="font:16px Segoe UI,sans-serif;max-width:640px;margin:40px auto;padding:0 16px;color:#1e293b">
-<h1>Foldwise {version}</h1>
+<h1>Pinefiles {version}</h1>
 <p>File manager, instant search and PC health center for Windows 10/11. One file, no installation needed.</p>
-<p><a href="Foldwise.exe" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Download Foldwise.exe ({size} MB)</a></p>
-<ol><li>Download it and double-click <b>Foldwise.exe</b>.</li>
+<p><a href="Pinefiles.exe" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Download Pinefiles.exe ({size} MB)</a></p>
+<ol><li>Download it and double-click <b>Pinefiles.exe</b>.</li>
 <li>Windows may say &ldquo;Windows protected your PC&rdquo; because the program isn't signed by a company: choose <b>More info &rarr; Run anyway</b> (only if you trust this page, i.e. you started it yourself).</li>
-<li>Optional: in Foldwise open <b>Tools &rarr; About / install / updates</b> and press <b>Install on this PC</b>.</li></ol>
+<li>Optional: in Pinefiles open <b>Tools &rarr; About / install / updates</b> and press <b>Install on this PC</b>.</li></ol>
 <p style="color:#64748b">SHA-256 of the file: <code style="word-break:break-all">{sha}</code><br>
-Check it with <code>certutil -hashfile Foldwise.exe SHA256</code> if you like. For automatic updates from this PC, paste
+Check it with <code>certutil -hashfile Pinefiles.exe SHA256</code> if you like. For automatic updates from this PC, paste
 <code>{manifest}</code> into About &rarr; Updates.</p></body>"""
 
 
@@ -71,7 +71,7 @@ class Share:
     def __init__(self, exe=None, port=8765):
         self.exe = Path(exe or source_exe() or "")
         if not self.exe.is_file():
-            raise FileNotFoundError("Foldwise.exe was not found. Run build_exe.py first (or use the packaged exe).")
+            raise FileNotFoundError("Pinefiles.exe was not found. Run build_exe.py first (or use the packaged exe).")
         self.token = secrets.token_urlsafe(6)
         self.port = port
         self.server = None
@@ -110,11 +110,11 @@ class Share:
                     return self._send(200, page.encode("utf-8"))
                 if name == "update.json":
                     return self._send(200, json.dumps(manifest_for(outer.exe, base)).encode("utf-8"), "application/json")
-                if name == "Foldwise.exe":
+                if name == "Pinefiles.exe":
                     outer.downloads += 1
                     with open(outer.exe, "rb") as f:
                         data = f.read()
-                    return self._send(200, data, "application/octet-stream", {"Content-Disposition": 'attachment; filename="Foldwise.exe"'})
+                    return self._send(200, data, "application/octet-stream", {"Content-Disposition": 'attachment; filename="Pinefiles.exe"'})
                 self._send(404, b"Not found")
 
         socketserver.ThreadingTCPServer.allow_reuse_address = True
@@ -135,17 +135,17 @@ class Share:
 
 
 def export_package(dest_dir, exe=None):
-    """Copy Foldwise.exe + update.json + a short README into dest_dir (a USB stick, a shared drive, a cloud-synced folder)."""
+    """Copy Pinefiles.exe + update.json + a short README into dest_dir (a USB stick, a shared drive, a cloud-synced folder)."""
     exe = Path(exe or source_exe() or "")
     if not exe.is_file():
-        raise FileNotFoundError("Foldwise.exe was not found. Run build_exe.py first.")
+        raise FileNotFoundError("Pinefiles.exe was not found. Run build_exe.py first.")
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(exe, dest / "Foldwise.exe")
+    shutil.copy2(exe, dest / "Pinefiles.exe")
     (dest / "update.json").write_text(json.dumps(manifest_for(exe), indent=1), encoding="utf-8")
     (dest / "README.txt").write_text(
-        f"Foldwise {ff_update.APP_VERSION}\r\n\r\n1. Copy Foldwise.exe to the other PC and double-click it (no install needed).\r\n"
+        f"Pinefiles {ff_update.APP_VERSION}\r\n\r\n1. Copy Pinefiles.exe to the other PC and double-click it (no install needed).\r\n"
         "2. If Windows says 'protected your PC': More info > Run anyway (the program isn't signed by a company).\r\n"
         "3. Optional: Tools > About / install / updates > Install on this PC.\r\n\r\n"
-        "Updating later: copy a newer Foldwise.exe next to the old one and use About > Update from a file.\r\n", encoding="utf-8")
+        "Updating later: copy a newer Pinefiles.exe next to the old one and use About > Update from a file.\r\n", encoding="utf-8")
     return dest

@@ -1,4 +1,4 @@
-"""Tools > Nearby devices: send files to phones and PCs running LocalSend (or Foldwise), and receive from them.
+"""Tools > Nearby devices: send files to phones and PCs running LocalSend (or Pinefiles), and receive from them.
 
 Receiving is OFF until you switch it on, and every incoming transfer asks first. Every function takes `A` first (ff_app.App).
 """
@@ -19,7 +19,7 @@ _S = {"node": None, "log": [], "recv": {}}
 
 
 def default_dir():
-    return os.path.join(os.path.expanduser("~"), "Downloads", "Foldwise received")
+    return os.path.join(os.path.expanduser("~"), "Downloads", "Pinefiles received")
 
 
 def node(A):
@@ -96,7 +96,7 @@ def stop_receiving(A, auto=False):
     log("Receiving turned itself off" if auto else "Receiving is off")
     if auto:
         A.show_toast(f"Receiving files turned itself off after {max(1, round(AUTO_OFF / 60))} minutes. Switch it on again in Nearby devices when you need it.", "Open",
-                     lambda: A.open_localsend(), title="Foldwise \u00b7 Nearby devices")
+                     lambda: A.open_localsend(), title="Pinefiles \u00b7 Nearby devices")
 
 
 def minutes_left():
@@ -183,7 +183,7 @@ def _ask(A, info):
                 win.focus_force()
             except tk.TclError:
                 pass
-        A.show_toast(f"{info['alias']} wants to send you {n} file{'s' if n != 1 else ''}.", "Show", raise_it, title="Foldwise \u00b7 Nearby devices")
+        A.show_toast(f"{info['alias']} wants to send you {n} file{'s' if n != 1 else ''}.", "Show", raise_it, title="Pinefiles \u00b7 Nearby devices")
     _later(A, show)
     done.wait(120)
     return res[0]
@@ -205,7 +205,7 @@ def _event(A, kind, d):
             log(f"Received {r['n']} file(s) from {r['alias']}")
             folder = node(A).receive_dir
             A.show_toast(f"Received {r['n']} file{'s' if r['n'] != 1 else ''} from {r['alias']}.", "Open folder", lambda: ff_platform.open_path(folder),
-                         title="Foldwise \u00b7 Nearby devices")
+                         title="Pinefiles \u00b7 Nearby devices")
             A.refresh()
     elif kind == "cancelled":
         log(f"{d['alias']} cancelled the transfer")
@@ -271,7 +271,7 @@ def open_localsend(A, paths=None):
     def show_status():
         if listening():
             status.set(f"On: visible as “{n.alias}” at {', '.join(LS.local_ips()[:2])}, port {n.port} ({n.protocol.upper()}). Every incoming transfer asks you first. "
-                       f"It switches itself off in about {minutes_left()} min. The first time, Windows may ask to allow Foldwise on the network: choose Private networks.")
+                       f"It switches itself off in about {minutes_left()} min. The first time, Windows may ask to allow Pinefiles on the network: choose Private networks.")
         else:
             status.set("Off: nobody can send to this PC. You can still send to others below.")
 
@@ -420,7 +420,7 @@ def open_localsend(A, paths=None):
     brow.pack(fill="x", pady=4)
     ttk.Button(brow, text="Files…", command=lambda: choose(files=True)).pack(side="left")
     ttk.Button(brow, text="A folder…", command=lambda: choose(files=False)).pack(side="left", padx=8)
-    ttk.Button(brow, text="Selected in Foldwise", command=lambda: use_selection()).pack(side="left")
+    ttk.Button(brow, text="Selected in Pinefiles", command=lambda: use_selection()).pack(side="left")
     grow = ttk.Frame(mid)  # its own row: the main button must never slide out of view in a narrow window
     grow.pack(fill="x", pady=(2, 4))
     go = ttk.Button(grow, text="Send to the selected device", style="Accent.TButton", command=lambda: send())
@@ -446,7 +446,7 @@ def open_localsend(A, paths=None):
     def use_selection():
         rows = [r for r in A.sel() if "ff_zip_" not in r[1]]
         if not rows:
-            msg.set("Select files or folders in the Foldwise file view first, then come back here.")
+            msg.set("Select files or folders in the Pinefiles file view first, then come back here.")
             return
         st["paths"] = [r[1] for r in rows]
         show_what()

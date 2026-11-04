@@ -14,14 +14,14 @@ from ff_core import ThemedBox as messagebox, T, DB_DIR, human_size, make_shortcu
 
 
 def open_about(A):
-    win = A.toplevel("About Foldwise", "700x640")
+    win = A.toplevel("About Pinefiles", "700x640")
     alive = {"v": True}
     win.bind("<Destroy>", lambda e: alive.update(v=False) if e.widget is win else None)
     f = ttk.Frame(win, padding=20)
     f.pack(fill="both", expand=True)
-    ttk.Label(f, text=f"Foldwise {ff_update.APP_VERSION}", font=("Segoe UI", 18, "bold")).pack(anchor="w")
+    ttk.Label(f, text=f"Pinefiles {ff_update.APP_VERSION}", font=("Segoe UI", 18, "bold")).pack(anchor="w")
     exe = ff_update.exe_path()
-    where = f"{exe}" if exe else "running from source (python foldwise.py)"
+    where = f"{exe}" if exe else "running from source (python pinefiles.py)"
     ttk.Label(f, text=f"Mode: {ff_update.mode()}\nProgram: {where}\nYour data: {DB_DIR}", style="DetKey.TLabel", background=T["bg"],
               justify="left", wraplength=640).pack(anchor="w", pady=(6, 14))
     msg = tk.StringVar(value="")
@@ -32,7 +32,7 @@ def open_about(A):
     box.pack(fill="x", pady=(4, 12))
 
     def do_install():
-        if not messagebox.askyesno("Install", f"Copy Foldwise to\n{ff_update.INSTALL_DIR}\n\nand add Start-menu and start-with-Windows shortcuts?\n"
+        if not messagebox.askyesno("Install", f"Copy Pinefiles to\n{ff_update.INSTALL_DIR}\n\nand add Start-menu and start-with-Windows shortcuts?\n"
                                    "(Nothing is changed in the registry.)", parent=win):
             return
         try:
@@ -44,7 +44,7 @@ def open_about(A):
     def do_uninstall():
         if messagebox.askyesno("Uninstall", "Remove the shortcuts and the installed program?\nYour settings and index are kept.", parent=win):
             ff_update.uninstall()
-            msg.set("Foldwise will disappear when you close it. Settings were kept.")
+            msg.set("Pinefiles will disappear when you close it. Settings were kept.")
             A.root.after(800, A.root.destroy)
 
     if ff_update.frozen() and not ff_update.is_installed():
@@ -52,7 +52,7 @@ def open_about(A):
     if ff_update.is_installed():
         ttk.Button(box, text="Uninstall…", command=do_uninstall).pack(side="left")
     if not ff_update.frozen():
-        ttk.Label(box, text="Install and update need the packaged Foldwise.exe.", style="DetKey.TLabel", background=T["bg"]).pack(side="left")
+        ttk.Label(box, text="Install and update need the packaged Pinefiles.exe.", style="DetKey.TLabel", background=T["bg"]).pack(side="left")
 
     login = tk.BooleanVar(value=shortcut_paths()[1].exists())
 
@@ -64,11 +64,11 @@ def open_about(A):
                 shortcut_paths()[1].unlink(missing_ok=True)
         except Exception as e:  # noqa
             msg.set(f"Couldn't change that: {e}")
-    ttk.Checkbutton(f, text="Start Foldwise (hidden, in the tray) when I sign in to Windows", variable=login, command=toggle_login).pack(anchor="w", pady=(0, 14))
+    ttk.Checkbutton(f, text="Start Pinefiles (hidden, in the tray) when I sign in to Windows", variable=login, command=toggle_login).pack(anchor="w", pady=(0, 14))
 
     # ---- updates
     ttk.Label(f, text="Updates", font=("Segoe UI", 11, "bold")).pack(anchor="w")
-    ttk.Label(f, text="Update source: your GitHub repository as owner/name (for example yourname/foldwise): Foldwise then looks at the latest "
+    ttk.Label(f, text="Update source: your GitHub repository as owner/name (for example yourname/pinefiles): Pinefiles then looks at the latest "
               "release there. You can also paste the address of an update.json. Nothing is downloaded without your OK, and every download "
               "is checked against its SHA-256 before it is used." + ("  Running from a Git checkout: use 'Update from Git'." if ff_update.source_dir() else ""),
               wraplength=640, style="DetKey.TLabel", background=T["bg"]).pack(anchor="w", pady=(2, 6))
@@ -99,7 +99,7 @@ def open_about(A):
             msg.set(f"You have the newest version ({ff_update.APP_VERSION}).")
         else:
             msg.set(f"Version {info['version']} is available. " + (info.get("notes") or ""))
-            if ff_update.frozen() and messagebox.askyesno("Update", f"Download and install Foldwise {info['version']}?\nFoldwise will restart.", parent=win):
+            if ff_update.frozen() and messagebox.askyesno("Update", f"Download and install Pinefiles {info['version']}?\nPinefiles will restart.", parent=win):
                 download(info)
 
     def download(info):
@@ -155,21 +155,21 @@ def open_about(A):
         threading.Thread(target=work, daemon=True).start()
 
     def installed(path, version):
-        msg.set("The update is installed. You can keep working: it starts the next time Foldwise starts.")
+        msg.set("The update is installed. You can keep working: it starts the next time Pinefiles starts.")
         restart_prompt(A, win)
 
     def from_file():
         from ui_picker import filedialog
-        p = filedialog.askopenfilename(parent=win, filetypes=[("Foldwise program", "*.exe")])
+        p = filedialog.askopenfilename(parent=win, filetypes=[("Pinefiles program", "*.exe")])
         if not p:
             return
         if not ff_update.frozen():
-            msg.set("Updating from a file only works for the packaged Foldwise.exe.")
+            msg.set("Updating from a file only works for the packaged Pinefiles.exe.")
             return
-        if messagebox.askyesno("Update", f"Replace this Foldwise with\n{p}\n\nOnly use a file you got from a source you trust.", parent=win):
+        if messagebox.askyesno("Update", f"Replace this Pinefiles with\n{p}\n\nOnly use a file you got from a source you trust.", parent=win):
             try:
                 import shutil
-                tmp = os.path.join(os.environ.get("TEMP", "."), "Foldwise-update-from-file.exe")
+                tmp = os.path.join(os.environ.get("TEMP", "."), "Pinefiles-update-from-file.exe")
                 shutil.copy2(p, tmp)
                 installed(ff_update.apply_update_live(tmp), "")
             except Exception as e:  # noqa
@@ -179,7 +179,7 @@ def open_about(A):
     if ff_update.source_dir():
         ttk.Button(ub, text="Update from Git", command=git_update).pack(side="left", padx=8)
     ttk.Button(ub, text="Update from a file…", command=from_file).pack(side="left", padx=8)
-    ttk.Button(ub, text="Restart Foldwise", command=lambda: restart_prompt(A, win)).pack(side="left", padx=8)
+    ttk.Button(ub, text="Restart Pinefiles", command=lambda: restart_prompt(A, win)).pack(side="left", padx=8)
     ttk.Button(ub, text="Storage & index\u2026", command=lambda: A.open_storage()).pack(side="left")
     ttk.Button(ub, text="Problem report\u2026", command=lambda: A.make_problem_report()).pack(side="left", padx=8)
     ttk.Label(f, textvariable=msg, wraplength=640).pack(anchor="w", pady=6)
@@ -188,7 +188,7 @@ def open_about(A):
 
 def restart_prompt(A, parent=None):
     """Offer to restart now. Your tabs, settings and index are kept; the file operations in progress are NOT, so ask first."""
-    if messagebox.askyesno("Restart Foldwise", "Restart now to use the newest version?\n\nYour open tabs come back automatically. "
+    if messagebox.askyesno("Restart Pinefiles", "Restart now to use the newest version?\n\nYour open tabs come back automatically. "
                            "Nothing running (copying, backups) will be interrupted if you choose No \u2014 it simply starts "
                            "with the new version next time.", parent=parent or A.root):
         A.app_restart()
@@ -206,10 +206,10 @@ def update_tick(A):
         try:
             if d:
                 behind, _log = ff_update.git_check(d)
-                text = f"Foldwise has {behind} new commit(s) on Git." if behind else None
+                text = f"Pinefiles has {behind} new commit(s) on Git." if behind else None
             else:
                 info = ff_update.check_update(url)
-                text = f"Foldwise {info['version']} is available (you have {ff_update.APP_VERSION})." if info else None
+                text = f"Pinefiles {info['version']} is available (you have {ff_update.APP_VERSION})." if info else None
         except Exception:
             return
         A.root.after(0, lambda: A.save_cfg(last_update_check=time.time()))
@@ -229,14 +229,14 @@ def problem_report(A):
 
 
 def open_storage(A):
-    """What Foldwise stores on disk, with tools to shrink it."""
+    """What Pinefiles stores on disk, with tools to shrink it."""
     import ff_support
     win = A.toplevel("Storage & index", "700x560")
     alive = {"v": True, "busy": False}
     win.bind("<Destroy>", lambda e: alive.update(v=False) if e.widget is win else None)
     f = ttk.Frame(win, padding=18)
     f.pack(fill="both", expand=True)
-    ttk.Label(f, text="Everything Foldwise keeps on this PC (all of it can be rebuilt; none of it is your files).", wraplength=640).pack(anchor="w", pady=(0, 8))
+    ttk.Label(f, text="Everything Pinefiles keeps on this PC (all of it can be rebuilt; none of it is your files).", wraplength=640).pack(anchor="w", pady=(0, 8))
     tv = ttk.Treeview(f, columns=("size",), show="tree headings", height=10)
     tv.heading("#0", text="What", anchor="w")
     tv.heading("size", text="Size", anchor="e")
@@ -257,7 +257,7 @@ def open_storage(A):
         if alive["busy"] or not messagebox.askyesno("Compact", "Shrink the content search index now?\nIt needs free disk space about as big as the index and can take several minutes; searching still works meanwhile.", parent=win):
             return
         alive["busy"] = True
-        msg.set("Compacting\u2026 please keep Foldwise open.")
+        msg.set("Compacting\u2026 please keep Pinefiles open.")
 
         def work():
             try:
@@ -292,7 +292,7 @@ def open_storage(A):
                 for n in ("content.db", "content.db-wal", "content.db-shm"):
                     (DB_DIR / n).unlink(missing_ok=True)
             except OSError as e:
-                msg.set(f"Couldn't remove it (is it busy? turn content search off, restart Foldwise and try again): {e}")
+                msg.set(f"Couldn't remove it (is it busy? turn content search off, restart Pinefiles and try again): {e}")
                 return
             msg.set("Content index deleted.")
             fill()
@@ -312,8 +312,8 @@ def open_notify(A):
     win = A.toplevel("Phone notifications", "720x420")
     f = ttk.Frame(win, padding=20)
     f.pack(fill="both", expand=True)
-    ttk.Label(f, text="Foldwise can also send its weekly check-up and malware warnings to your phone. The easiest free way: install the ntfy app, "
-              "subscribe to a topic name only you know (e.g. foldwise-yourname-1234), and enter  https://ntfy.sh/<that topic>  below. "
+    ttk.Label(f, text="Pinefiles can also send its weekly check-up and malware warnings to your phone. The easiest free way: install the ntfy app, "
+              "subscribe to a topic name only you know (e.g. pinefiles-yourname-1234), and enter  https://ntfy.sh/<that topic>  below. "
               "A Discord channel webhook address works too. Only the short message text is sent.", wraplength=670).pack(anchor="w")
     url = tk.StringVar(value=A.cfg["notify_url"])
     ttk.Entry(f, textvariable=url).pack(fill="x", pady=12)
@@ -322,7 +322,7 @@ def open_notify(A):
     def test():
         A.save_cfg(notify_url=url.get().strip())
         try:
-            code = ff_notify.send(url.get(), "Foldwise", "Test message: notifications work.")
+            code = ff_notify.send(url.get(), "Pinefiles", "Test message: notifications work.")
             msg.set(f"Sent (server answered {code}). Check your phone.")
         except Exception as e:  # noqa
             msg.set(f"Couldn't send: {e}")
@@ -343,11 +343,11 @@ SETUP_OPTIONS = [  # (config key, label, hint) - everything except plain filenam
     ("ocr_pdfs", "Also read scanned PDFs (OCR)", "Slow; only useful if you have scanned documents."),
     ("folder_sizes", "Show folder sizes", "Calculates the size of every folder in the list."),
     ("details_open", "Show the details pane on the right", "Preview and info of the selected file (F3 toggles it)."),
-    ("restore_tabs", "Reopen my tabs when Foldwise starts", ""),
+    ("restore_tabs", "Reopen my tabs when Pinefiles starts", ""),
     ("sidebar_recent", "Show recent / frequent folders and recent files in the sidebar", ""),
     ("real_icons", "Use real Windows file icons", "Off = simple built-in icons."),
     ("confirm_delete", "Ask before deleting", "Recommended: keeps deletions from happening by accident."),
-    ("win_e", "Win+E opens Foldwise instead of Explorer", "Needs a restart."),
+    ("win_e", "Win+E opens Pinefiles instead of Explorer", "Needs a restart."),
     ("remember_window", "Remember the window size and position", ""),
     ("health_alerts", "Warn me about low disk space and overdue backups", "A small pop-up, at most hourly."),
     ("weekly_summary", "Weekly PC health summary", "One notification a week with your score."),
@@ -359,12 +359,12 @@ def welcome(A, rerun=False):
     """First start (or Customize > Setup wizard): choose what is on. Everything except filename indexing starts off."""
     if A.root.state() == "withdrawn":  # started hidden in the tray: bring the window up for the wizard
         A.root.deiconify()
-    win = A.toplevel("Setup" if rerun else "Welcome to Foldwise", "700x680", tab=False)
+    win = A.toplevel("Setup" if rerun else "Welcome to Pinefiles", "700x680", tab=False)
     f = ttk.Frame(win, padding=24)
     f.pack(fill="both", expand=True)
     bottom = ttk.Frame(f)
     bottom.pack(side="bottom", fill="x", pady=(12, 0))
-    ttk.Label(f, text="Set up Foldwise", font=("Segoe UI", 18, "bold")).pack(anchor="w")
+    ttk.Label(f, text="Set up Pinefiles", font=("Segoe UI", 18, "bold")).pack(anchor="w")
     ttk.Label(f, text="Only fast file-name search is always on. Tick what you want; you can change all of this later in Customize.",
               wraplength=640).pack(anchor="w", pady=(6, 10))
     box = ttk.Frame(f)
@@ -387,12 +387,12 @@ def welcome(A, rerun=False):
     ttk.Separator(inner).pack(fill="x", pady=10)
     login = tk.BooleanVar(value=False)
     check = tk.BooleanVar(value=False)
-    ttk.Checkbutton(inner, text="Start Foldwise in the tray when I sign in (Ctrl+Alt+F and search always ready)", variable=login).pack(anchor="w", pady=3)
+    ttk.Checkbutton(inner, text="Start Pinefiles in the tray when I sign in (Ctrl+Alt+F and search always ready)", variable=login).pack(anchor="w", pady=3)
     if not rerun:
         ttk.Checkbutton(inner, text="Run a first health check now (about 20 seconds)", variable=check).pack(anchor="w", pady=3)
     inst = tk.BooleanVar(value=False)
     if ff_update.frozen() and not ff_update.is_installed():
-        ttk.Checkbutton(inner, text="Install Foldwise on this PC (Start-menu entry; no registry changes)", variable=inst).pack(anchor="w", pady=3)
+        ttk.Checkbutton(inner, text="Install Pinefiles on this PC (Start-menu entry; no registry changes)", variable=inst).pack(anchor="w", pady=3)
     msg = tk.StringVar()
     ttk.Label(bottom, textvariable=msg, wraplength=560).pack(side="left")
 

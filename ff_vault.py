@@ -1,4 +1,4 @@
-"""Encrypted vaults: lock a folder into ONE password-protected .ffvault file, unlock it again anywhere Foldwise runs.
+"""Encrypted vaults: lock a folder into ONE password-protected .ffvault file, unlock it again anywhere Pinefiles runs.
 
 Security design (standard, boring choices on purpose): key = scrypt(password, random salt, n=2^15, r=8, p=1); the folder is packed as a
 tar stream and encrypted in 1 MB chunks with AES-256-GCM. Every chunk is authenticated together with its position and a
@@ -124,7 +124,7 @@ def unlock(vault_path, dest_dir, password, progress=lambda name: None):
     with open(vault_path, "rb") as f:
         header = f.read(len(MAGIC) + 4 + 16)
         if not header.startswith(MAGIC):
-            raise ValueError("This is not a Foldwise vault.")
+            raise ValueError("This is not a Pinefiles vault.")
         n = struct.unpack(">I", header[len(MAGIC):len(MAGIC) + 4])[0]
         if n > (1 << 20):
             raise ValueError("The vault file is damaged.")

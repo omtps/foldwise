@@ -1,4 +1,4 @@
-"""Glue between the main window (foldwise.run_gui) and the ui_*.py modules.
+"""Glue between the main window (pinefiles.run_gui) and the ui_*.py modules.
 
 run_gui keeps the window's state in local variables; the dialog modules reach them through `A`, a live view: reading
 `A.cfg` or `A.status` calls a tiny getter that returns the variable's CURRENT value (so rebinding is seen too).

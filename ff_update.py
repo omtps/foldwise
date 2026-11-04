@@ -1,9 +1,9 @@
-"""Version, install/uninstall and self-update for the packaged Foldwise.exe.
+"""Version, install/uninstall and self-update for the packaged Pinefiles.exe.
 
 Nothing here touches the registry. Installing = copying the exe into a per-user folder and creating Start-menu (and
 optionally Startup) shortcuts. Updating = download a newer exe from a manifest URL you choose (JSON:
-{"version": "1.2.0", "url": "https://.../Foldwise.exe", "sha256": "<hex>", "notes": "..."}), verify its SHA-256, then swap
-it in after Foldwise exits.
+{"version": "1.2.0", "url": "https://.../Pinefiles.exe", "sha256": "<hex>", "notes": "..."}), verify its SHA-256, then swap
+it in after Pinefiles exits.
 """
 import hashlib
 import json
@@ -17,13 +17,14 @@ import time
 import urllib.request
 from pathlib import Path
 
-APP_VERSION = "1.0.2-1"
+APP_VERSION = "1.1"
 
-# newest first; shown in Tools > Foldwise > What's new and as a toast after an update (keep CHANGELOG.md in step)
+# newest first; shown in Tools > Pinefiles > What's new and as a toast after an update (keep CHANGELOG.md in step)
 WHATS_NEW = [
-    ('1.0.2-1', ["Nearby devices: the question 'X wants to send you files' now always shows on screen (it opened off-screen when Foldwise was minimised) and a pop-up points at it", "Nearby devices works with the real LocalSend apps: Foldwise now presents the certificate they require, and the new 'Check my network' button explains Public networks and firewall blocks", 'Receiving files switches itself off after 20 minutes (never in the middle of a transfer) and no longer starts by itself at launch', 'The Nearby devices page fits narrow windows: the Send button no longer hides to the right']),
-    ('1.0.2', ['Nearby devices: send files to and receive from phones and PCs running the free LocalSend app (or another Foldwise) on your network; right-click files > Send to a nearby device; receiving is off until you turn it on and always asks first', "Faster copying: Foldwise uses Windows' own copy routine and copies many small files at once (measured here: 4000 small files 3.5x faster, a 1 GB file about 4x faster before the drive itself is the limit)", 'Moving files to another drive now shows progress, can be cancelled and removes the original only after everything arrived', 'Tutorial button in Nearby devices']),
-    ('1.0.1', ["Mini-games fixed: they start on your first click, pause when the pointer leaves, can be dragged by the title bar, no longer cover a tool's buttons and keep playing when you open another tool", 'Foldwise has its own file and folder chooser: tools no longer open the Windows file dialog', 'Customize > Default file manager: make Foldwise open your folders instead of File Explorer, one click to switch back (reversible, undoes itself if Foldwise is deleted)', 'Tutorial buttons in the FTP / SFTP / WebDAV and Phone notifications tools']),
+    ('1.1', ['Pinefiles is the new name of Foldwise: your settings, index, tags, notes and shortcuts carry over by themselves', 'New tools: Tag manager, Photo timeline, Cloud files, Theme editor and a Keyboard shortcuts editor', 'Notes on files and folders (search them with note:), every folder remembers its own sort and view, alerts when a saved search finds new files', 'Never opens online-only files (Phone Link photos, OneDrive) by itself, so they are not downloaded; switch in Customize']),
+    ('1.0.2-1', ["Nearby devices: the question 'X wants to send you files' now always shows on screen (it opened off-screen when Pinefiles was minimised) and a pop-up points at it", "Nearby devices works with the real LocalSend apps: Pinefiles now presents the certificate they require, and the new 'Check my network' button explains Public networks and firewall blocks", 'Receiving files switches itself off after 20 minutes (never in the middle of a transfer) and no longer starts by itself at launch', 'The Nearby devices page fits narrow windows: the Send button no longer hides to the right']),
+    ('1.0.2', ['Nearby devices: send files to and receive from phones and PCs running the free LocalSend app (or another Pinefiles) on your network; right-click files > Send to a nearby device; receiving is off until you turn it on and always asks first', "Faster copying: Pinefiles uses Windows' own copy routine and copies many small files at once (measured here: 4000 small files 3.5x faster, a 1 GB file about 4x faster before the drive itself is the limit)", 'Moving files to another drive now shows progress, can be cancelled and removes the original only after everything arrived', 'Tutorial button in Nearby devices']),
+    ('1.0.1', ["Mini-games fixed: they start on your first click, pause when the pointer leaves, can be dragged by the title bar, no longer cover a tool's buttons and keep playing when you open another tool", 'Pinefiles has its own file and folder chooser: tools no longer open the Windows file dialog', 'Customize > Default file manager: make Pinefiles open your folders instead of File Explorer, one click to switch back (reversible, undoes itself if Pinefiles is deleted)', 'Tutorial buttons in the FTP / SFTP / WebDAV and Phone notifications tools']),
     ("1.0.0", ["File manager with tabs, split view, previews, tags, archives as folders and undo",
                "Instant search over every drive, with optional search inside documents and PDFs",
                "Smart cleaner, duplicate and look-alike photo finders, folder size history",
@@ -31,7 +32,8 @@ WHATS_NEW = [
                "Encrypted vaults, scheduled backups, folder sync, FTP / SFTP / WebDAV",
                "Themes, a setup wizard, a guided tour, mini-games, and updates from GitHub"]),
 ]
-INSTALL_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Programs" / "Foldwise"
+LEGACY_NAMES = ("Foldwise", "FileFinder")  # earlier names of this program: their data folders, install folders and shortcuts are carried over
+INSTALL_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Programs" / "Pinefiles"
 NO_WINDOW = 0x08000000
 SYS = "%SystemRoot%\\System32\\"  # full paths: a PATH with Git's GNU find/timeout in front would break the helper script
 SLEEP = SYS + "ping.exe -n 2 127.0.0.1 >nul"
@@ -47,7 +49,7 @@ def exe_path():
 
 def is_installed():
     e = exe_path()
-    return bool(e) and e.parent.resolve() in (INSTALL_DIR.resolve(), INSTALL_DIR.with_name("FileFinder").resolve())
+    return bool(e) and e.parent.resolve() in [INSTALL_DIR.resolve()] + [INSTALL_DIR.with_name(n).resolve() for n in LEGACY_NAMES]
 
 
 def mode():
@@ -71,9 +73,9 @@ def is_newer(candidate, current=APP_VERSION):
     return a + (0,) * (n - len(a)) > b + (0,) * (n - len(b))
 
 
-# "owner/name" of the Foldwise repository on GitHub. When it is set, releases of that repository are what the program updates from
-# (a release carries Foldwise.exe and update.json). It can also be typed in About on each PC, which then wins over this default.
-DEFAULT_REPO = "omtps/foldwise"
+# "owner/name" of the Pinefiles repository on GitHub. When it is set, releases of that repository are what the program updates from
+# (a release carries Pinefiles.exe and update.json). It can also be typed in About on each PC, which then wins over this default.
+DEFAULT_REPO = "omtps/pinefiles"
 
 
 def manifest_url(source):
@@ -91,11 +93,11 @@ def check_update(url, timeout=12):
     url = manifest_url(url)
     if not url.lower().startswith(("https://", "http://")):
         raise ValueError("Set the update source first: your GitHub repository as owner/name, or the address of an update.json")
-    req = urllib.request.Request(url, headers={"User-Agent": f"Foldwise/{APP_VERSION}"})
+    req = urllib.request.Request(url, headers={"User-Agent": f"Pinefiles/{APP_VERSION}"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         info = json.loads(r.read(200_000).decode("utf-8"))
     if not isinstance(info, dict) or "version" not in info or "url" not in info:
-        raise ValueError("That address doesn't look like a Foldwise update manifest")
+        raise ValueError("That address doesn't look like a Pinefiles update manifest")
     return info if is_newer(info["version"]) else None
 
 
@@ -149,8 +151,8 @@ def download_update(info, progress=lambda done, total: None, cancel=lambda: Fals
     want = (info.get("sha256") or "").lower()
     if len(want) != 64:
         raise ValueError("The update manifest has no SHA-256 checksum, so it can't be verified")
-    dst = Path(tempfile.gettempdir()) / f"Foldwise-update-{info['version']}.exe"
-    req = urllib.request.Request(info["url"], headers={"User-Agent": f"Foldwise/{APP_VERSION}"})
+    dst = Path(tempfile.gettempdir()) / f"Pinefiles-update-{info['version']}.exe"
+    req = urllib.request.Request(info["url"], headers={"User-Agent": f"Pinefiles/{APP_VERSION}"})
     with urllib.request.urlopen(req, timeout=30) as r, open(dst, "wb") as f:
         total = int(r.headers.get("Content-Length") or 0)
         done = 0
@@ -171,7 +173,7 @@ def download_update(info, progress=lambda done, total: None, cancel=lambda: Fals
 
 def _run_after_exit(script_lines):
     """Run a tiny .cmd after this process has ended (so files in use can be replaced). Returns the script path."""
-    path = Path(tempfile.gettempdir()) / f"foldwise-{os.getpid()}.cmd"
+    path = Path(tempfile.gettempdir()) / f"pinefiles-{os.getpid()}.cmd"
     pid = os.getpid()
     body = ['@echo off', ':wait', f'{SYS}tasklist.exe /FI "PID eq {pid}" 2>nul | {SYS}find.exe "{pid}" >nul && ({SLEEP} & goto wait)'] + script_lines + ['del "%~f0"']
     path.write_text("\r\n".join(body) + "\r\n", encoding="utf-8")
@@ -187,7 +189,7 @@ def _retry(cmd, label):
 
 def _swap_in(new_path, target):
     """Put `new_path` in place of `target` even while `target` is RUNNING: Windows won't let you overwrite or delete a running
-    exe, but it does let you rename it. The old copy keeps running from '<name>.old' until Foldwise restarts."""
+    exe, but it does let you rename it. The old copy keeps running from '<name>.old' until Pinefiles restarts."""
     new_path, target = Path(new_path), Path(target)
     old = None
     if target.exists():
@@ -217,7 +219,7 @@ def selftest_exe(path, timeout=120):
         r = subprocess.run([str(path), "--selftest"], capture_output=True, timeout=timeout, creationflags=NO_WINDOW)
     except (OSError, subprocess.TimeoutExpired) as e:
         return False, str(e)
-    out = Path(tempfile.gettempdir(), "foldwise-selftest.txt")
+    out = Path(tempfile.gettempdir(), "pinefiles-selftest.txt")
     text = out.read_text(encoding="utf-8", errors="replace") if out.exists() else ""
     return r.returncode == 0 and "OK" in text, text.strip()
 
@@ -277,10 +279,10 @@ def cleanup_old(folder=None):
 
 
 def apply_update_live(new_exe):
-    """Install the new exe NOW, while Foldwise keeps running. The new version starts at the next launch/restart."""
+    """Install the new exe NOW, while Pinefiles keeps running. The new version starts at the next launch/restart."""
     me = exe_path()
     if not me:
-        raise RuntimeError("Updating only works for the packaged Foldwise.exe")
+        raise RuntimeError("Updating only works for the packaged Pinefiles.exe")
     ok, text = selftest_exe(new_exe)
     if not ok:
         raise ValueError("The new version failed its own self-test, so it was NOT installed:\n" + text[:400])
@@ -297,7 +299,7 @@ def apply_update_live(new_exe):
 
 
 def restart_app(argv=None):
-    """Start a fresh Foldwise as soon as this process has ended (nothing to close by hand). The caller must exit right after."""
+    """Start a fresh Pinefiles as soon as this process has ended (nothing to close by hand). The caller must exit right after."""
     argv = argv or (([str(exe_path())] if frozen() else None) or _source_cmd())
     quoted = " ".join(f'"{a}"' for a in argv)
     _run_after_exit([f'start "" {quoted} --hidden'])
@@ -306,21 +308,21 @@ def restart_app(argv=None):
 def _source_cmd():
     exe = Path(sys.executable)
     pyw = exe.with_name("pythonw.exe")
-    return [str(pyw if pyw.exists() else exe), str(Path(__file__).resolve().with_name("foldwise.py"))]
+    return [str(pyw if pyw.exists() else exe), str(Path(__file__).resolve().with_name("pinefiles.py"))]
 
 
 def apply_update(new_exe, restart=True):
     """Replace the running exe with `new_exe` once we have exited, then start it. The caller must quit right after."""
     me = exe_path()
     if not me:
-        raise RuntimeError("Updating only works for the packaged Foldwise.exe")
+        raise RuntimeError("Updating only works for the packaged Pinefiles.exe")
     lines = _retry(f'copy /Y "{new_exe}" "{me}"', "a") + [f'del "{new_exe}" 2>nul']
     if restart:
         lines.append(f'start "" "{me}" --hidden')
     _run_after_exit(lines)
 
 
-def make_lnk(lnk, target, args="", icon=None, desc="Foldwise"):
+def make_lnk(lnk, target, args="", icon=None, desc="Pinefiles"):
     Path(lnk).parent.mkdir(parents=True, exist_ok=True)
     ps = (f"$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{lnk}');$s.TargetPath='{target}';$s.Arguments='{args}';"
           f"$s.WorkingDirectory='{Path(target).parent}';$s.Description='{desc}';" + (f"$s.IconLocation='{icon}';" if icon else "") + "$s.Save()")
@@ -329,17 +331,17 @@ def make_lnk(lnk, target, args="", icon=None, desc="Foldwise"):
 
 def shortcut_paths(appdata=None):
     base = Path(appdata or os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
-    return base / "Foldwise.lnk", base / "Startup" / "Foldwise.lnk"
+    return base / "Pinefiles.lnk", base / "Startup" / "Pinefiles.lnk"
 
 
 def install(dest_dir=None, autostart=True, shortcuts=True, appdata=None):
     """Copy this exe into the install folder and create shortcuts. Returns the installed exe path."""
     me = exe_path()
     if not me:
-        raise RuntimeError("Installing only works for the packaged Foldwise.exe")
+        raise RuntimeError("Installing only works for the packaged Pinefiles.exe")
     dest = Path(dest_dir or INSTALL_DIR)
     dest.mkdir(parents=True, exist_ok=True)
-    target = dest / "Foldwise.exe"
+    target = dest / "Pinefiles.exe"
     if me.resolve() != target.resolve():
         tmp = target.with_suffix(".new")
         tmp.write_bytes(me.read_bytes())
@@ -355,10 +357,10 @@ def install(dest_dir=None, autostart=True, shortcuts=True, appdata=None):
 def uninstall(dest_dir=None, appdata=None, remove_data=False):
     """Remove shortcuts and (after exit) the installed exe. Your settings/data folder is kept unless remove_data."""
     start, startup = shortcut_paths(appdata)
-    for p in (start, startup, start.with_name("FileFinder.lnk"), startup.with_name("FileFinder.lnk")):
+    for p in [start, startup] + [d.with_name(n + ".lnk") for n in LEGACY_NAMES for d in (start, startup)]:
         p.unlink(missing_ok=True)
     dest = Path(dest_dir or INSTALL_DIR)
     lines = _retry(f'rmdir /S /Q "{dest}"', "a")
     if remove_data:
-        lines.append(f'rmdir /S /Q "{Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Foldwise"}"')
+        lines.append(f'rmdir /S /Q "{Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Pinefiles"}"')
     _run_after_exit(lines)

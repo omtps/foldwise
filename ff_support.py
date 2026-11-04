@@ -1,4 +1,4 @@
-"""Support helpers: a one-click problem report and a look at what Foldwise stores on disk."""
+"""Support helpers: a one-click problem report and a look at what Pinefiles stores on disk."""
 import json
 import platform
 import sys
@@ -23,9 +23,9 @@ def make_report(dest_dir=None):
     """Zip with version, system info, the last lines of error.log and settings WITHOUT private values. Returns the zip path."""
     dest = Path(dest_dir or (Path.home() / "Desktop"))
     dest.mkdir(parents=True, exist_ok=True)
-    z = dest / f"Foldwise problem report {time.strftime('%Y-%m-%d %H%M')}.zip"
+    z = dest / f"Pinefiles problem report {time.strftime('%Y-%m-%d %H%M')}.zip"
     cfg = {k: ("(hidden)" if k in PRIVATE_KEYS else v) for k, v in ff_core.load_config().items() if k not in ("frec", "visits", "space_history", "recent_dirs", "tabs")}
-    info = (f"Foldwise {ff_update.APP_VERSION} ({ff_update.mode()})\nWindows: {platform.platform()}\nPython: {sys.version.split()[0]}\n"
+    info = (f"Pinefiles {ff_update.APP_VERSION} ({ff_update.mode()})\nWindows: {platform.platform()}\nPython: {sys.version.split()[0]}\n"
             f"Data folder: {ff_core.DB_DIR}\nTime: {time.ctime()}\n")
     with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as f:
         f.writestr("info.txt", info)
@@ -47,7 +47,7 @@ def _size(p):
 
 
 def storage_report():
-    """[(label, bytes)] for everything Foldwise keeps in its data folder."""
+    """[(label, bytes)] for everything Pinefiles keeps in its data folder."""
     d = Path(ff_core.DB_DIR)
     parts = [("File index (index.db)", [d / "index.db", d / "index.db-wal", d / "index.db-shm"]),
              ("Content search index (content.db)", [d / "content.db", d / "content.db-wal", d / "content.db-shm"]),

@@ -1,4 +1,4 @@
-"""Foldwise's own file / folder chooser: tools that ask for a file, a folder or a save location show this window (same look as the rest
+"""Pinefiles's own file / folder chooser: tools that ask for a file, a folder or a save location show this window (same look as the rest
 of the app, same drives and favourite places) instead of the Windows dialog.
 
 `filedialog` below has the same four functions and keyword arguments as tkinter.filedialog (parent, title, initialdir, initialfile,
@@ -288,7 +288,7 @@ def _ask(mode, kw):
 
 
 class filedialog:
-    """Drop-in for tkinter.filedialog (the functions Foldwise uses)."""
+    """Drop-in for tkinter.filedialog (the functions Pinefiles uses)."""
 
     @staticmethod
     def askopenfilename(**kw):

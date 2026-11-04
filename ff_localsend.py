@@ -1,4 +1,4 @@
-"""Send and receive files with nearby devices using the LocalSend protocol (v2), so Foldwise works with the LocalSend apps on phones and PCs.
+"""Send and receive files with nearby devices using the LocalSend protocol (v2), so Pinefiles works with the LocalSend apps on phones and PCs.
 
 Nothing here runs until the user turns it on. Receiving always asks first (`on_request`), files go only into the chosen folder under
 sanitised names, uploads are limited to what was announced, and every session has secret per-file tokens tied to the sender's address.
@@ -90,7 +90,7 @@ def make_cert(folder):
         except (ValueError, OSError):
             pass
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    name = x509.Name([x509.NameAttribute(x509.oid.NameOID.COMMON_NAME, "Foldwise")])
+    name = x509.Name([x509.NameAttribute(x509.oid.NameOID.COMMON_NAME, "Pinefiles")])
     now = datetime.datetime.now(datetime.timezone.utc)
     cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key()).serial_number(x509.random_serial_number())
             .not_valid_before(now - datetime.timedelta(days=1)).not_valid_after(now + datetime.timedelta(days=3650)).sign(key, hashes.SHA256()))
@@ -115,7 +115,7 @@ class _Server(http.server.ThreadingHTTPServer):
 
 
 class _Handler(http.server.BaseHTTPRequestHandler):
-    server_version = "Foldwise"
+    server_version = "Pinefiles"
     sys_version = ""
 
     def log_message(self, *a):
@@ -409,7 +409,7 @@ class Node:
         info = self.info()
         info.pop("announce", None)
         st, data = self._request(peer, "POST", API + "/prepare-upload", {"info": info, "files": wire}, timeout=130)  # the person on the other side has to accept
-        reasons = {403: "The other device declined the files.", 401: "That device asks for a PIN, which Foldwise does not support yet.",
+        reasons = {403: "The other device declined the files.", 401: "That device asks for a PIN, which Pinefiles does not support yet.",
                    409: "That device is busy with another transfer. Try again in a moment.", 429: "That device has too many requests right now.",
                    400: "The other device could not read the request."}
         if st == 204:
@@ -505,18 +505,30 @@ class Node:
         self.on_event("incoming", {"sid": sid, "alias": alias, "count": len(clean), "total": ask["total"]})
         h._json(200, {"sessionId": sid, "files": tokens})
 
+    @staticmethod
+    def _drain(h, cap=1 << 20):
+        """Read (and drop) the start of a request body we are refusing: closing a socket that still has unread data resets the connection
+        and the other side may never see our answer."""
+        try:
+            h.rfile.read(min(int(h.headers.get("Content-Length") or 0), cap))
+        except (OSError, ValueError):
+            pass
+
     def _upload(self, h, q, ip):
         sid, fid, tok = q.get("sessionId"), q.get("fileId"), q.get("token")
         if not sid or not fid or not tok:
+            self._drain(h)
             return h._json(400, {"message": "missing parameters"})
         with self._lock:
             s = self._sessions.get(sid)
             ok = bool(s) and s["state"] == "open" and s["ip"] == ip and secrets.compare_digest(str(s["tokens"].get(fid) or ""), tok) and fid in s["left"]
         if not ok:
+            self._drain(h)
             return h._json(403, {"message": "invalid token or address"})
         meta = s["files"][fid]
         n = int(h.headers.get("Content-Length") or -1)
         if n < 0 or n > meta["size"]:
+            self._drain(h)
             return h._json(400, {"message": "wrong size"})
         final = unique_path(os.path.join(s["dest"], *meta["name"].split("/")))
         part = final + ".part"

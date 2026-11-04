@@ -1,4 +1,4 @@
-"""Persistent stores for Foldwise:
+"""Persistent stores for Pinefiles:
  - ContentIndex   full-text index of document contents (SQLite FTS5) for instant `content:` search
  - Tags           colour labels and free-form tags on files/folders, stored by path
 """
@@ -8,6 +8,7 @@ import threading
 import time
 
 import ff_extras as X
+import ff_platform
 
 LABEL_COLORS = ["red", "orange", "yellow", "green", "blue", "purple"]
 LABEL_EMOJI = {"red": "\U0001F534", "orange": "\U0001F7E0", "yellow": "\U0001F7E1", "green": "\U0001F7E2",
@@ -50,6 +51,7 @@ def pdf_supported():
         return False
 
 
+@ff_platform.local_only(str)
 def extract_text(path):
     ext = os.path.splitext(path)[1][1:].lower()
     if ext == "pdf":
@@ -264,7 +266,7 @@ class Tags:
             con.close()
 
     def move(self, old, new):
-        """Keep tags when a file or folder is renamed/moved inside Foldwise."""
+        """Keep tags when a file or folder is renamed/moved inside Pinefiles."""
         con = self.connect()
         try:
             lo = old.lower()
@@ -279,6 +281,43 @@ class Tags:
             pass
         finally:
             con.close()
+
+    def _rewrite(self, change):
+        """Apply change(color, [tags]) -> (color, [tags]) to every row; returns how many rows changed. Rows left without colour and tags are removed."""
+        con = self.connect()
+        done = 0
+        try:
+            for path_lc, color, tags in con.execute("SELECT path_lc, color, tags FROM tags").fetchall():
+                old = (color or "", [t for t in (tags or "").split(",") if t])
+                new_color, new_tags = change(*old)
+                new_tags = self._norm(new_tags)
+                if (new_color or "", new_tags) == old:
+                    continue
+                done += 1
+                if new_color or new_tags:
+                    con.execute("UPDATE tags SET color=?, tags=? WHERE path_lc=?", (new_color or "", ",".join(new_tags), path_lc))
+                else:
+                    con.execute("DELETE FROM tags WHERE path_lc=?", (path_lc,))
+            con.commit()
+        finally:
+            con.close()
+        return done
+
+    def rename_tag(self, old, new):
+        """Rename a tag everywhere; renaming to a tag that exists merges the two. Returns the number of items changed."""
+        old, new = (self._norm([old]) or [""])[0], (self._norm([new]) or [""])[0]
+        if not old or not new or old == new:
+            return 0
+        return self._rewrite(lambda c, t: (c, [new if x == old else x for x in t]))
+
+    def delete_tag(self, tag):
+        """Take a tag off every item (colours stay). Returns the number of items changed."""
+        tag = (self._norm([tag]) or [""])[0]
+        return self._rewrite(lambda c, t: (c, [x for x in t if x != tag])) if tag else 0
+
+    def clear_color(self, color):
+        """Remove one colour label from every item (tags stay). Returns the number of items changed."""
+        return self._rewrite(lambda c, t: ("" if c == color else c, t))
 
     def paths_for(self, tag=None, color=None):
         con = self.connect()

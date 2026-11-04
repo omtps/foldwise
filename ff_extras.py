@@ -1,4 +1,4 @@
-"""Backend helpers for Foldwise (no GUI code here).
+"""Backend helpers for Pinefiles (no GUI code here).
 
  - Watcher        keeps the search index current by listening to NTFS change notifications
  - ShellIcons     real Windows icons per file type, as PIL images
@@ -23,6 +23,8 @@ import threading
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
+
+import ff_platform
 
 try:
     from ctypes import wintypes
@@ -302,6 +304,7 @@ def split_content(query):
     return " ".join(rest), terms
 
 
+@ff_platform.local_only(str)
 def read_text(path, limit=2_000_000):
     ext = os.path.splitext(path)[1][1:].lower()
     try:
@@ -386,7 +389,7 @@ def find_duplicates(root, cancel=lambda: False, progress=lambda msg: None, min_s
                     st = os.lstat(p)
                 except OSError:
                     continue
-                if statmod.S_ISREG(st.st_mode) and st.st_size >= min_size:
+                if statmod.S_ISREG(st.st_mode) and st.st_size >= min_size and not ff_platform.is_online_only(p, st):  # (hashing an online-only file would download it)
                     by_size.setdefault(st.st_size, []).append(p)
                 seen += 1
             progress(f"Listing files... {seen:,}")
@@ -463,7 +466,7 @@ def file_date(path):
     """datetime a photo was taken (EXIF DateTimeOriginal) or, failing that, when the file was last modified."""
     import datetime as dt
     try:
-        if os.path.splitext(path)[1].lower() in (".jpg", ".jpeg", ".tif", ".tiff", ".png", ".webp"):
+        if os.path.splitext(path)[1].lower() in (".jpg", ".jpeg", ".tif", ".tiff", ".png", ".webp") and not ff_platform.is_online_only(path):
             from PIL import Image
             with Image.open(path) as im:
                 ex = im.getexif()
@@ -604,6 +607,21 @@ def copy_file_fast(src, dst, on_bytes=None, cancel=lambda: False, chunk=8 << 20)
     shutil.copystat(src, dst)
 
 
+class VerifyError(OSError):
+    """A finished copy is not identical to its original."""
+
+
+def verify_copy(src, dst, chunk=8 << 20):
+    """Compare the original and its copy byte by byte; raises VerifyError at the first difference."""
+    with open(src, "rb") as a, open(dst, "rb") as b:
+        while True:
+            x, y = a.read(chunk), b.read(chunk)
+            if x != y:
+                raise VerifyError(f"The copy of {os.path.basename(src)} does not match the original.")
+            if not x:
+                return
+
+
 def _same_volume(a, b):
     """True when moving a to b is a rename (same drive / same share)."""
     try:
@@ -612,7 +630,7 @@ def _same_volume(a, b):
         return False
 
 
-def transfer(paths, folder, move, progress=None, cancel=lambda: False, resolve=None, workers=4):
+def transfer(paths, folder, move, progress=None, cancel=lambda: False, resolve=None, workers=4, verify=False):
     """Copy/move into `folder`. Returns [(src, dst)] that completed. progress(done, total, name).
     resolve(src, existing) -> 'replace' | 'keep' | 'skip' | 'cancel' is asked when the name is already taken
     (for 'replace' the callback must already have removed the existing item).
@@ -633,6 +651,52 @@ def transfer(paths, folder, move, progress=None, cancel=lambda: False, resolve=N
 
     def copy_file(src, dst):
         copy_file_fast(src, dst, lambda n: add_bytes(n, os.path.basename(src)), cancel)
+        if verify:  # optional: read both again and compare (a bad copy is removed, so the original is never replaced by it)
+            try:
+                verify_copy(src, dst)
+            except VerifyError:
+                try:
+                    os.remove(dst)
+                except OSError:
+                    pass
+                raise
+
+    def merge_tree(src, dst):
+        """Folder onto an existing folder: add what is missing, ask (resolve) for files that exist on both sides.
+        Returns [(src_file, new_file)] for the files that were newly created (replaced files are not listed, so Undo never touches them)."""
+        made = []
+        for d, _dirs, fs in os.walk(src):
+            rel = os.path.relpath(d, src)
+            td = dst if rel == "." else os.path.join(dst, rel)
+            os.makedirs(td, exist_ok=True)
+            for f in fs:
+                sf, df = os.path.join(d, f), os.path.join(td, f)
+                replaced = False
+                if os.path.exists(df):
+                    act = resolve(sf, df) if resolve else "keep"
+                    if act == "cancel" or cancel():
+                        raise Cancelled()
+                    if act == "skip":
+                        continue
+                    if act == "replace" and not os.path.exists(df):
+                        replaced = True
+                    else:
+                        df = _unique(td, f)
+                if move and _same_volume(sf, df):
+                    shutil.move(sf, df)
+                else:
+                    copy_file(sf, df)
+                    if move:
+                        os.remove(sf)
+                if not replaced:
+                    made.append((sf, df))
+        if move:  # folders that are empty now (everything in them moved) go; folders that still hold skipped files stay
+            for d, _dirs, _fs in os.walk(src, topdown=False):
+                try:
+                    os.rmdir(d)
+                except OSError:
+                    pass
+        return made
 
     def copy_tree(src, dst):
         files = []  # (src, dst, size)
@@ -697,6 +761,9 @@ def transfer(paths, folder, move, progress=None, cancel=lambda: False, resolve=N
                 raise Cancelled()
             if act == "skip":
                 continue
+            if act == "merge" and os.path.isdir(p) and os.path.isdir(target):
+                pairs.extend(merge_tree(p, target))
+                continue
             if act == "replace" and not os.path.exists(target):
                 dst = target
         if dst is None:
@@ -756,6 +823,7 @@ ConvertTo-Json -InputObject $o -Compress
 """
 
 
+@ff_platform.local_only(list)
 def media_info(path):
     """[(label, value)] for audio / video files from Windows' own property system (duration, size in pixels, bit rate, artist ...)."""
     try:
@@ -1228,6 +1296,7 @@ def natural_key(s):
 
 
 # ----------------------------------------------------------------------- checksums
+@ff_platform.local_only()
 def file_hashes(path, cancel=lambda: False, progress=lambda n: None):
     """{'MD5': hex, 'SHA-1': hex, 'SHA-256': hex} read in one pass, or None if cancelled."""
     hs = {"MD5": hashlib.md5(), "SHA-1": hashlib.sha1(), "SHA-256": hashlib.sha256()}
@@ -1247,6 +1316,7 @@ def file_hashes(path, cancel=lambda: False, progress=lambda n: None):
 
 
 # ------------------------------------------------------------------------ quick-look helpers
+@ff_platform.local_only(str)
 def office_text(path, limit=6000):
     """Plain text from .docx / .pptx / .xlsx / .odt (zip of XML) without any extra library, or None."""
     import re as _re
@@ -1297,6 +1367,7 @@ def _dms(v, ref):
         return None
 
 
+@ff_platform.local_only(None)
 def exif_info(path):
     """{'rows': [(label, value)], 'gps': (lat, lon) or None, 'size': (w, h)} for an image, or None if unreadable."""
     from PIL import Image, ExifTags
@@ -1370,6 +1441,8 @@ def _walk_hash(folder, cancel, progress):
             p = os.path.join(dp, fn)
             try:
                 st = os.stat(p)
+                if ff_platform.is_online_only(p, st):
+                    continue  # fingerprinting an online-only file would download it
                 h = hashlib.sha256()
                 with open(p, "rb") as f:
                     for b in iter(lambda: f.read(1 << 20), b""):
@@ -1610,6 +1683,7 @@ def sftp_available():
 
 
 # --------------------------------------------------------------------------------------- similar photos
+@ff_platform.local_only()
 def dhash(path, size=8):
     """64-bit 'difference hash' of an image: equal for the same picture even when resized, re-saved or slightly edited."""
     from PIL import Image, ImageOps
@@ -1835,3 +1909,83 @@ def find_empty_folders(top, cancel=lambda: False, progress=lambda m: None):
         nested = sum(1 for e in empty if e != d and e.startswith(d + "\\"))
         out.append((d, nested))
     return sorted(out, key=lambda t: t[0].lower())
+
+
+# ------------------------------------------------------------------------------------------------ secure delete
+def shred_check(path):
+    """None when `path` may be shredded, else the reason it may not (drive roots, system folders, links, archives)."""
+    p = os.path.abspath(path)
+    low = p.lower().rstrip("\\")
+    if zip_split(p) and zip_split(p)[1]:
+        return "files inside an archive can't be shredded"
+    if len([x for x in low.replace("/", "\\").split("\\") if x]) < 3:
+        return "drive roots and top-level folders are never shredded"
+    for bad in (os.environ.get("SystemRoot", "C:\\Windows"), os.environ.get("ProgramFiles", "C:\\Program Files"),
+                os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)"), os.environ.get("ProgramData", "C:\\ProgramData")):
+        if bad and (low == bad.lower() or low.startswith(bad.lower() + "\\")):
+            return "system and program folders are never shredded"
+    if os.path.islink(p):
+        return "links are never followed"
+    return None
+
+
+def shred_paths(paths, passes=1, progress=None, cancel=lambda: False):
+    """Overwrite files with random data, hide their size and name, then delete them (folders: everything inside).
+    Returns (files_shredded, [(path, reason)]). Overwriting is NOT a guarantee on SSDs, USB sticks, cloud-synced folders or
+    drives with snapshots: the drive may keep the old data elsewhere. Never touches links, drive roots or system folders."""
+    done, errors = 0, []
+    files = []
+    for p in paths:
+        why = shred_check(p)
+        if why:
+            errors.append((p, why))
+            continue
+        if os.path.isdir(p):
+            for d, dirs, fs in os.walk(p):
+                dirs[:] = [x for x in dirs if not os.path.islink(os.path.join(d, x))]
+                files += [os.path.join(d, f) for f in fs]
+        elif os.path.isfile(p):
+            files.append(p)
+    total = sum(os.path.getsize(f) for f in files if os.path.isfile(f)) or 1
+    seen = 0
+    for f in files:
+        if cancel():
+            raise Cancelled()
+        try:
+            if os.path.islink(f):
+                errors.append((f, "link skipped"))
+                continue
+            os.chmod(f, statmod.S_IWRITE | statmod.S_IREAD)
+            size = os.path.getsize(f)
+            with open(f, "r+b", buffering=0) as fh:
+                for _ in range(max(1, passes)):
+                    fh.seek(0)
+                    left = size
+                    while left > 0:
+                        n = min(1 << 20, left)
+                        fh.write(os.urandom(n))
+                        left -= n
+                        if cancel():
+                            raise Cancelled()
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                fh.truncate(0)
+            junk = os.path.join(os.path.dirname(f), "~" + os.urandom(6).hex())
+            os.replace(f, junk)
+            os.remove(junk)
+            done += 1
+            seen += size
+            if progress:
+                progress(seen, total, os.path.basename(f))
+        except Cancelled:
+            raise
+        except OSError as e:
+            errors.append((f, str(e)))
+    for p in paths:  # the folders themselves, now empty
+        if os.path.isdir(p) and not shred_check(p):
+            for d, _dirs, _fs in os.walk(p, topdown=False):
+                try:
+                    os.rmdir(d)
+                except OSError:
+                    pass
+    return done, errors

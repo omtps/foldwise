@@ -33,7 +33,7 @@ def open_health(A, tab=None):
     nb = ttk.Notebook(win)
     nb.pack(fill="both", expand=True, padx=10, pady=10)
     pages = {}
-    for key, label in (("over", "Overview"), ("drives", "Drives && space"), ("start", "Startup apps"), ("backups", "Backups"), ("net", "Network"), ("sec", "Security"), ("trend", "Trends"), ("apps", "Programs")):
+    for key, label in (("over", "Overview"), ("drives", "Drives && space"), ("start", "Startup apps"), ("drivers", "Drivers"), ("backups", "Backups"), ("net", "Network"), ("sec", "Security"), ("trend", "Trends"), ("apps", "Programs")):
         fr = tk.Frame(nb, bg=T["bg"])
         nb.add(fr, text="  " + label.replace("&&", "&") + "  ")
         pages[key] = fr
@@ -173,14 +173,77 @@ def open_health(A, tab=None):
             A.root.after(0, lambda: alive["v"] and show(res))
         threading.Thread(target=work, daemon=True).start()
 
+    def full_info_shown(r):
+        adm_msg.set("\n".join(ff_elevated.describe(r)))
+        for smp in HL.wear_sample(info=r):  # every approved check adds a point to the SSD wear history (Trends tab)
+            HL.history_add(A.hist_path, "wear", smp)
     ttk.Button(adm_row, text="Full drive health, TPM, BitLocker (asks for administrator OK)",
-               command=lambda: admin_run(ff_elevated.full_info, lambda r: adm_msg.set("\n".join(ff_elevated.describe(r))))).pack(side="left")
+               command=lambda: admin_run(ff_elevated.full_info, full_info_shown)).pack(side="left")
     ttk.Button(adm_row, text="Create a restore point (asks for administrator OK)",
                command=lambda: admin_run(ff_elevated.create_restore_point, lambda r: adm_msg.set((r or {}).get("message") or "No answer: the prompt was declined or timed out."))).pack(side="left", padx=8)
     tk.Label(dp, textvariable=adm_msg, bg=T["bg"], fg=T["fg"], anchor="w", justify="left", wraplength=1100, font=("Segoe UI", fs)).pack(fill="x", padx=18)
     tk.Label(dp, text="Drives don't always report temperature, wear and errors without administrator rights — blanks just mean “not reported”.",
              bg=T["bg"], fg=T["muted"], font=("Segoe UI", fs - 1)).pack(anchor="w", padx=18, pady=(4, 0))
-    tk.Label(dp, text="FREE SPACE OVER TIME (system drive; Foldwise takes one reading a day)", bg=T["bg"], fg=T["accent"],
+    tk.Label(dp, text="DRIVE SPEED TEST (writes one 256 MB temporary file on the drive, reads it back, then deletes it; takes about 20 seconds)", bg=T["bg"], fg=T["accent"],
+             font=("Segoe UI", fs - 1, "bold")).pack(anchor="w", padx=18, pady=(14, 4))
+    sp_row = tk.Frame(dp, bg=T["bg"])
+    sp_row.pack(fill="x", padx=14)
+    sp_drive = ttk.Combobox(sp_row, state="readonly", width=8, values=[d["root"] for d in Hd["drives"] if d["free"] > 3 << 30])
+    if sp_drive["values"]:
+        sp_drive.current(0)
+    sp_drive.pack(side="left")
+    sp_msg = tk.StringVar(value="")
+    sp_pb = ttk.Progressbar(sp_row, mode="determinate", maximum=100, length=200)
+    sp_state = {"cancel": False, "run": False}
+    sp_btn = ttk.Button(sp_row, text="Run speed test")
+
+    def speed_show(r, err=None):
+        sp_state["run"] = False
+        sp_btn.configure(text="Run speed test")
+        sp_pb.pack_forget()
+        if err:
+            sp_msg.set(err)
+            return
+        drive = sp_drive.get()
+        prev = (A.cfg.get("speed_results") or {}).get(drive)
+        lines = [f"Write {r['seq_write_mbps']:.0f} MB/s   \u2022   Read {r['seq_read_mbps']:.0f} MB/s   \u2022   random 4 KB: read {r['rand_read_iops']:,.0f} IOPS ({r['rand_read_mbps']:.0f} MB/s), "
+                 f"write {r['rand_write_iops']:,.0f} IOPS ({r['rand_write_mbps']:.0f} MB/s)", HL.speed_verdict(r)]
+        if prev:
+            lines.append(f"Last time ({time.strftime('%d %b %Y', time.localtime(prev['t']))}): read {prev['seq_read_mbps']:.0f} MB/s, write {prev['seq_write_mbps']:.0f} MB/s"
+                         + ("  \u2014 slower than before, check the drive's health and free space" if r["seq_read_mbps"] < prev["seq_read_mbps"] * 0.6 else ""))
+        sp_msg.set("\n".join(lines))
+        res = dict(A.cfg.get("speed_results") or {})
+        res[drive] = dict(r, t=time.time())
+        A.save_cfg(speed_results=res)
+
+    def speed_run():
+        if sp_state["run"]:
+            sp_state["cancel"] = True
+            return
+        if not sp_drive.get():
+            sp_msg.set("No drive with enough free space (needs more than 3 GB).")
+            return
+        sp_state.update(run=True, cancel=False)
+        sp_btn.configure(text="Cancel")
+        sp_pb.pack(side="left", padx=10)
+        sp_pb.configure(value=0)
+        sp_msg.set("Testing\u2026")
+
+        def work():
+            try:
+                r = HL.disk_speed_test(sp_drive.get(), 256, lambda pct, m: A.root.after(0, lambda: alive["v"] and (sp_pb.configure(value=pct), sp_msg.set(m))),
+                                       lambda: sp_state["cancel"])
+                err = None
+            except InterruptedError:
+                r, err = None, "Cancelled."
+            except Exception as e:  # noqa
+                r, err = None, f"The test couldn't run: {e}"
+            A.root.after(0, lambda: alive["v"] and speed_show(r, err))
+        threading.Thread(target=work, daemon=True).start()
+    sp_btn.configure(command=speed_run)
+    sp_btn.pack(side="left", padx=8)
+    tk.Label(dp, textvariable=sp_msg, bg=T["bg"], fg=T["fg"], anchor="w", justify="left", wraplength=1100, font=("Segoe UI", fs)).pack(fill="x", padx=18, pady=(4, 0))
+    tk.Label(dp, text="FREE SPACE OVER TIME (system drive; Pinefiles takes one reading a day)", bg=T["bg"], fg=T["accent"],
              font=("Segoe UI", fs - 1, "bold")).pack(anchor="w", padx=18, pady=(14, 4))
     cv = tk.Canvas(dp, bg=T["panel"], height=190, highlightthickness=0)
     cv.pack(fill="x", padx=14, pady=(0, 10))
@@ -225,12 +288,12 @@ def open_health(A, tab=None):
 
     # ---------------- startup tab
     sp = pages["start"]
-    tk.Label(sp, text="These programs start with Windows. Foldwise only lists them — to turn one off, use Task Manager → Startup apps "
+    tk.Label(sp, text="These programs start with Windows. Pinefiles only lists them — to turn one off, use Task Manager → Startup apps "
              "(right-click → Disable). Disabling things you don't need makes the PC start faster.", bg=T["bg"], fg=T["muted"],
              wraplength=1100, justify="left", font=("Segoe UI", fs)).pack(anchor="w", padx=18, pady=(14, 8))
-    tst = ttk.Treeview(sp, columns=("where", "mem", "cpu", "cmd"), show="tree headings")
-    for c, text, w, anc in (("#0", "Program", 240, "w"), ("where", "Where it's set", 170, "w"), ("mem", "Memory now", 100, "e"), ("cpu", "CPU time used", 110, "e"),
-                            ("cmd", "Command", 520, "w")):
+    tst = ttk.Treeview(sp, columns=("where", "start", "impact", "mem", "cpu", "cmd"), show="tree headings")
+    for c, text, w, anc in (("#0", "Program", 220, "w"), ("where", "Where it's set", 150, "w"), ("start", "Started", 80, "e"), ("impact", "Impact", 70, "w"),
+                            ("mem", "Memory now", 90, "e"), ("cpu", "CPU time used", 100, "e"), ("cmd", "Command", 420, "w")):
         tst.heading(c, text=text, anchor=anc)
         tst.column(c, width=w, anchor=anc)
     tst.pack(fill="both", expand=True, padx=14)
@@ -238,12 +301,51 @@ def open_health(A, tab=None):
     sb_.pack(fill="x", padx=14, pady=10, side="bottom", before=tst)
     ttk.Button(sb_, text="Open Task Manager (Startup apps)", style="Accent.TButton", command=lambda: A.open_action("taskmgr")).pack(side="left")
     ttk.Button(sb_, text="Open my Startup folder", command=lambda: ff_platform.open_os_settings("startup_folder")).pack(side="left", padx=8)
-    ttk.Button(sb_, text="Turn startup apps on/off (Windows Settings)", command=lambda: ff_platform.open_os_settings("startup_apps")).pack(side="left")
+    ttk.Button(sb_, text="Turn startup apps on/off (Windows Settings)", command=lambda: ff_platform.open_os_settings("startup_apps")).pack(side="left", padx=(0, 8))
+    boot_msg = tk.StringVar(value="Started = seconds after you signed in that the program began (estimated from the running processes). Impact = what it uses now. "
+                                  "Windows keeps its own, more exact boot report, readable with administrator OK.")
+
+    def boot_run():
+        boot_msg.set("Waiting for the Windows administrator prompt\u2026 (approve it to continue)")
+        admin_run(ff_elevated.boot_report, lambda r: boot_msg.set("\n".join(ff_elevated.describe_boot(r))))
+    ttk.Button(sb_, text="Windows' own boot report (asks for administrator OK)", command=boot_run).pack(side="left")
+    tk.Label(sp, textvariable=boot_msg, bg=T["bg"], fg=T["fg"], anchor="w", justify="left", wraplength=1100, font=("Segoe UI", fs)).pack(fill="x", padx=18, side="bottom")
+
+    # ---------------- drivers tab
+    drp = pages["drivers"]
+    drv_msg = tk.StringVar(value="Reading the installed drivers\u2026")
+    tk.Label(drp, text="Read-only. A driver is flagged when it is from a maker other than Microsoft, is for graphics, network, audio, Bluetooth or a fingerprint reader, and is more "
+             "than 3 years old, or when it is not signed. Newer drivers usually come through Windows Update or the maker's site; an old one is not always a problem.",
+             bg=T["bg"], fg=T["muted"], wraplength=1100, justify="left", font=("Segoe UI", fs)).pack(anchor="w", padx=18, pady=(14, 4))
+    tk.Label(drp, textvariable=drv_msg, bg=T["bg"], fg=T["fg"], anchor="w", justify="left", wraplength=1100, font=("Segoe UI", fs, "bold")).pack(fill="x", padx=18, pady=(0, 6))
+    drb = tk.Frame(drp, bg=T["bg"])
+    drb.pack(side="bottom", fill="x", padx=14, pady=10)
+    ttk.Button(drb, text="Check Windows Update", style="Accent.TButton", command=lambda: A.open_action("update")).pack(side="left")
+    ttk.Button(drb, text="Open Device Manager", command=lambda: A.open_action("devmgr")).pack(side="left", padx=8)
+    drt = ttk.Treeview(drp, columns=("maker", "ver", "date", "cls", "flag"), show="tree headings")
+    for c, text, w, anc in (("#0", "Device", 380, "w"), ("maker", "Maker", 170, "w"), ("ver", "Version", 130, "w"), ("date", "Driver date", 100, "w"), ("cls", "Type", 100, "w"), ("flag", "", 160, "w")):
+        drt.heading(c, text=text, anchor=anc)
+        drt.column(c, width=w, anchor=anc, stretch=(c == "#0"))
+    drt.tag_configure("old", foreground=WARN)
+    drt.pack(fill="both", expand=True, padx=14)
+
+    def ap_drivers(res):
+        if res is None:
+            drv_msg.set("Couldn't read the driver list.")
+            return
+        drivers, problems = res
+        drv_msg.set(HL.driver_summary(drivers, problems))
+        drt.delete(*drt.get_children())
+        for p in problems:
+            drt.insert("", "end", text=p.get("Name") or "?", values=("", "", "", "", f"Problem (code {p.get('Code')})"), tags=("old",))
+        for d in drivers:
+            flag = ("Not signed" if not d["signed"] else f"{d['age_years']:.0f} years old") if d["old"] else ""
+            drt.insert("", "end", text=d["name"], values=(d["maker"], d["version"], d["date"], d["cls"], flag), tags=("old",) if d["old"] else ())
 
     # ---------------- backups tab
     bp = pages["backups"]
     tk.Label(bp, text="A backup job copies the NEW and CHANGED files from a folder into a backup folder — ideally on another drive. "
-             "It never deletes anything and never overwrites a newer file in the backup. Foldwise warns you when a backup gets old.",
+             "It never deletes anything and never overwrites a newer file in the backup. Pinefiles warns you when a backup gets old.",
              bg=T["bg"], fg=T["muted"], wraplength=1100, justify="left", font=("Segoe UI", fs)).pack(anchor="w", padx=18, pady=(14, 8))
     jt = ttk.Treeview(bp, columns=("dst", "sched", "next", "last", "result"), show="tree headings", selectmode="browse")
     for c, text, w in (("#0", "Back up this folder", 280), ("dst", "… into", 280), ("sched", "Schedule", 90), ("next", "Next run", 90),
@@ -495,7 +597,7 @@ def open_health(A, tab=None):
 
     # ---------------- security tab (read-only audit; fixing is done in Windows' own settings)
     scp = pages["sec"]
-    tk.Label(scp, text="A read-only check of the settings that matter most for safety. Foldwise never changes any of them \u2014 "
+    tk.Label(scp, text="A read-only check of the settings that matter most for safety. Pinefiles never changes any of them \u2014 "
              "select a line to read what it means and how to fix it.", bg=T["bg"], fg=T["muted"], wraplength=1100, justify="left",
              font=("Segoe UI", fs)).pack(anchor="w", padx=18, pady=(14, 8))
     sdet = tk.StringVar(value="Checking\u2026 (about 10 seconds)")
@@ -553,14 +655,14 @@ def open_health(A, tab=None):
 
     # ---------------- trends tab (CPU/RAM every 5 min, battery + drive temperature hourly)
     trp = pages["trend"]
-    tk.Label(trp, text="How this PC has been behaving. Foldwise keeps a light log while it runs (CPU and memory every 5 minutes, battery and drive "
+    tk.Label(trp, text="How this PC has been behaving. Pinefiles keeps a light log while it runs (CPU and memory every 5 minutes, battery and drive "
              "temperature every hour). Drive temperature is only reported when Windows allows it (often needs administrator rights).",
              bg=T["bg"], fg=T["muted"], wraplength=1100, justify="left", font=("Segoe UI", fs)).pack(anchor="w", padx=18, pady=(14, 4))
     charts = []
     trbox = tk.Frame(trp, bg=T["bg"])
     trbox.pack(fill="both", expand=True, padx=14, pady=4)
-    for k_ in range(4):
-        cv_ = tk.Canvas(trbox, bg=T["panel"], highlightthickness=0, height=120)
+    for k_ in range(5):
+        cv_ = tk.Canvas(trbox, bg=T["panel"], highlightthickness=0, height=110)
         cv_.pack(fill="both", expand=True, pady=3)
         charts.append(cv_)
 
@@ -597,7 +699,7 @@ def open_health(A, tab=None):
         h_ = HL.history_load(A.hist_path)
         gr = HL.folder_growth(h_["folders"])
         grow_v.set("Folders that grew the most (last ~30 days): " + ", ".join(f"{os.path.basename(p)} +{human_size(g)}" for p, g in gr) if gr else
-                   "Folder growth: Foldwise measures your main folders once a week while you're away; the first comparison appears after two weeks.")
+                   "Folder growth: Pinefiles measures your main folders once a week while you're away; the first comparison appears after two weeks.")
         day = 86400
         draw_chart(charts[0], HL.series(h_["perf"], "cpu"), "CPU load", "%", 100, "#60a5fa", day)
         draw_chart(charts[1], HL.series(h_["perf"], "mem"), "Memory in use", "%", 100, "#4ade80", day)
@@ -605,13 +707,17 @@ def open_health(A, tab=None):
         tp = HL.series(h_["hourly"], "temp")
         draw_chart(charts[3], tp, "Drive temperature" if tp else "Drive temperature (not reported by Windows without admin rights)", "\u00B0C", 100, "#f87171", 30 * day)
 
+        wp = HL.wear_series(h_["wear"])
+        draw_chart(charts[4], wp, "SSD wear used (grows slowly; each approved drive check and a weekly reading add a point)" if wp else
+                   "SSD wear (no readings yet: press 'Full drive health' on the Drives tab, or wait for the weekly reading if your drive reports it)", "%", 100, "#f87171", 730 * day)
+
     for cv_ in charts:
         cv_.bind("<Configure>", draw_trends)
     nb.bind("<<NotebookTabChanged>>", lambda e: draw_trends() if nb.select() == str(pages["trend"]) else None, add="+")
 
     # ---------------- programs tab (read-only list; removal is done by Windows' own uninstaller)
     ap = pages["apps"]
-    tk.Label(ap, text="Installed programs, biggest first. Foldwise only lists them — to remove one, select it and press the button: Windows runs its own uninstaller.",
+    tk.Label(ap, text="Installed programs, biggest first. Pinefiles only lists them — to remove one, select it and press the button: Windows runs its own uninstaller.",
              bg=T["bg"], fg=T["muted"], wraplength=1100, justify="left", font=("Segoe UI", fs)).pack(anchor="w", padx=18, pady=(14, 8))
     pf = tk.Frame(ap, bg=T["bg"])
     pf.pack(fill="both", expand=True, padx=14)
@@ -716,7 +822,7 @@ def open_health(A, tab=None):
         Hd["startup"] = res or []
         tst.delete(*tst.get_children())
         for it in Hd["startup"]:
-            tst.insert("", "end", text=it["name"], values=(it["where"], "", "", it["command"]))
+            tst.insert("", "end", text=it["name"], values=(it["where"], "", "", "", "", it["command"]))
         n = len(Hd["startup"])
         set_tile("startup", f"{n} program(s)", ", ".join(i["name"] for i in Hd["startup"][:4]) + ("…" if n > 4 else ""), "warn" if n > 15 else "good")
 
@@ -726,9 +832,10 @@ def open_health(A, tab=None):
             return
         Hd["startup"] = res
         tst.delete(*tst.get_children())
-        for it in sorted(res, key=lambda i: -(i["mem"] / 1e6 + i["cpu_s"])):
+        for it in sorted(res, key=lambda i: ({"high": 0, "medium": 1, "low": 2}.get(i.get("impact"), 3), -(i["mem"] / 1e6 + i["cpu_s"]))):
             tst.insert("", "end", text=it["name"] + ("" if it["running"] else "  (not running)"),
-                       values=(it["where"], human_size(it["mem"]) if it["running"] else "", f"{it['cpu_s']:.0f} s" if it["running"] else "", it["command"]))
+                       values=(it["where"], f"+{it['start_s']:.0f} s" if it.get("start_s") is not None else "", (it.get("impact") or "").title(),
+                               human_size(it["mem"]) if it["running"] else "", f"{it['cpu_s']:.0f} s" if it["running"] else "", it["command"]))
         heavy = [i for i in res if i["running"] and i["mem"] > 300e6]
         if heavy:
             set_tile("startup", f"{len(res)} program(s)", "Heaviest: " + ", ".join(f"{i['name']} ({human_size(i['mem'])})" for i in heavy[:3]), "warn")
@@ -763,6 +870,7 @@ def open_health(A, tab=None):
         task(HL.startup_items, ap_startup)
         task(lambda: HL.startup_impact(HL.startup_items()), ap_impact)
         task(HL.disk_errors, ap_errors)
+        task(lambda: (HL.driver_report(), HL.problem_devices()), ap_drivers)
         task(HL.installed_apps, fill_apps)
         task(HL.security_raw, sec_show)
         task(HL.last_update, lambda res: (Hd.update(updates=res), refresh_recs()))
@@ -877,7 +985,7 @@ def open_action(A, act):
         A.status.set(f"Couldn't open that: {e}")
 
 
-def show_toast(A, text, label, action, title="Foldwise health"):
+def show_toast(A, text, label, action, title="Pinefiles health"):
     """A small corner pop-up (never steals focus) for low disk space and overdue backups."""
     t = tk.Toplevel(A.root)
     t.overrideredirect(True)
@@ -983,7 +1091,7 @@ def weekly_check(A):
             log_error(f"weekly summary: {e}")
             return
         A.root.after(0, lambda: A.show_toast(text, "Open PC health", "health"))
-        A.notify("Foldwise weekly check-up", text)
+        A.notify("Pinefiles weekly check-up", text)
     threading.Thread(target=work, daemon=True).start()
 
 
@@ -1013,6 +1121,21 @@ def set_job_fields(A, src, dst, **fields):
             h_()
         except tk.TclError:
             A.bk_hooks.remove(h_)
+
+
+def wear_tick(A):
+    """Weekly while idle: add a point to the SSD wear history when Windows reports wear or power-on hours without administrator rights."""
+    if time.time() - A.cfg.get("last_wear_snap", 0) < 7 * 86400 or HL.idle_seconds() < 120:
+        return
+    A.save_cfg(last_wear_snap=time.time())
+
+    def work():
+        try:
+            for smp in HL.wear_sample(drives=HL.physical_disks()):
+                HL.history_add(A.hist_path, "wear", smp)
+        except Exception as e:  # noqa
+            log_error(f"wear snapshot: {e}")
+    threading.Thread(target=work, daemon=True).start()
 
 
 def folders_tick(A):
@@ -1046,6 +1169,7 @@ def bk_tick(A):
     A.root.after(300 * 1000, A.bk_tick)
     A.perf_tick()
     folders_tick(A)
+    wear_tick(A)
     A.track_tick()
     if A.bk_running or HL.idle_seconds() < 120:
         return

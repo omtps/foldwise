@@ -1,10 +1,10 @@
-"""Foldwise - index every file on your PC and search it instantly.
+"""Pinefiles - index every file on your PC and search it instantly.
 
-Run:  python foldwise.py            (GUI + file manager; Ctrl+Alt+Space summons it)
-      python foldwise.py --install  (Start menu shortcut)
-      python foldwise.py --autostart / --remove-autostart  (run hidden at login)
-      python foldwise.py --index    (just (re)build the index, no GUI)
-      python foldwise.py --search "report ext:pdf"   (CLI search)
+Run:  python pinefiles.py            (GUI + file manager; Ctrl+Alt+Space summons it)
+      python pinefiles.py --install  (Start menu shortcut)
+      python pinefiles.py --autostart / --remove-autostart  (run hidden at login)
+      python pinefiles.py --index    (just (re)build the index, no GUI)
+      python pinefiles.py --search "report ext:pdf"   (CLI search)
 
 Search syntax (all terms are ANDed, case-insensitive, matched against the full path):
     invoice 2023          both words must appear in the path
@@ -27,7 +27,13 @@ import types
 import time
 from pathlib import Path
 
+import ff_alerts
 import ff_core
+import ff_notes
+import ff_platform
+import ff_themes
+import ff_timeline
+import ff_views
 import ff_notify
 import ff_index as I
 import ui_about
@@ -36,6 +42,15 @@ import ui_browse
 import ui_more
 import ui_games
 import ui_localsend
+import ui_ops
+import ui_rules
+import ui_keys
+import ui_notes
+import ui_themes
+import ui_alerts
+import ui_cloud
+import ui_tags
+import ui_timeline
 import ui_dragselect
 import ui_extras
 import ui_fileops
@@ -67,14 +82,16 @@ def run_gui(background=True, hidden=False, open_path=None):
         return
     if os.name == "nt":  # own taskbar identity, so it shows our icon instead of python's
         import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Foldwise.App")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Pinefiles.App")
 
     A = App()
     bind = A.binder
-    A._bind(dict(ACTION_LABEL=lambda: ACTION_LABEL, _thumb_file=lambda: _thumb_file, ac_state=lambda: ac_state, activate=lambda: activate, after_change=lambda: after_change, app_restart=lambda: app_restart, autoclean_now=lambda: autoclean_now, autoclean_tick=lambda: autoclean_tick, bk_hooks=lambda: bk_hooks, bk_running=lambda: bk_running, bk_tick=lambda: bk_tick, build_crumbs=lambda: build_crumbs, build_sidebar=lambda: build_sidebar, build_tabs=lambda: build_tabs, cfg=lambda: cfg, change_setting=lambda: change_setting, check=lambda: check, chip_lay=lambda: chip_lay, chipbar=lambda: chipbar, chipbtns=lambda: chipbtns, choose_dest=lambda: choose_dest, clear_hl=lambda: clear_hl, clear_preview=lambda: clear_preview, clear_recent=lambda: clear_recent, close_preview=lambda: close_preview, close_tab=lambda: close_tab, cmd_items=lambda: cmd_items, cmdbar=lambda: cmdbar, commit_visit=lambda: commit_visit, compress=lambda: compress, conflict_dialog=lambda: conflict_dialog, copy_as=lambda: copy_as, copy_path=lambda: copy_path, crumb_menu=lambda: crumb_menu, crumbs=lambda: crumbs, cur=lambda: cur, delete_workspace=lambda: delete_workspace, dens_var=lambda: dens_var, dest_menu=lambda: dest_menu, det=lambda: det, det_btns=lambda: det_btns, det_rows=lambda: det_rows, details_btn=lambda: details_btn, details_var=lambda: details_var, do_copy=lambda: do_copy, do_delete=lambda: do_delete, do_paste=lambda: do_paste, do_rename=lambda: do_rename, do_undo=lambda: do_undo, drag=lambda: drag, drop_target=lambda: drop_target, edit_path=lambda: edit_path, edit_tags=lambda: edit_tags, entry=lambda: entry, export_csv=lambda: export_csv, extract=lambda: extract, ff_var=lambda: ff_var, fit=lambda: fit, folder_sizes_now=lambda: folder_sizes_now, forget_file=lambda: forget_file, forget_folder=lambda: forget_folder, fsize=lambda: fsize, fsz_var=lambda: fsz_var, gcv=lambda: gcv, gmq=lambda: gmq, go_back=lambda: go_back, go_up=lambda: go_up, gpool=lambda: gpool, grid=lambda: grid, grid_icon=lambda: grid_icon, grid_index_at=lambda: grid_index_at, grid_load_thumb=lambda: grid_load_thumb, grid_schedule=lambda: grid_schedule, grid_see=lambda: grid_see, grid_select=lambda: grid_select, grid_thumb_ready=lambda: grid_thumb_ready, grid_tiles_in=lambda: grid_tiles_in, grid_var=lambda: grid_var, gridf=lambda: gridf, gsb=lambda: gsb, hard_refresh=lambda: hard_refresh, health_btn=lambda: health_btn, health_watch=lambda: health_watch, hidden_var=lambda: hidden_var, hist_path=lambda: hist_path, home=lambda: home, icon_box=lambda: icon_box, info=lambda: info, info_labels=lambda: info_labels, invert_selection=lambda: invert_selection, lay=lambda: lay, layout_cmdbar=lambda: layout_cmdbar, load_tab=lambda: load_tab, load_workspace=lambda: load_workspace, local_folders=lambda: local_folders, make_menu=lambda: make_menu, make_problem_report=lambda: make_problem_report, mark_active=lambda: mark_active, mid=lambda: mid, mq=lambda: mq, mq_clear=lambda: mq_clear, mq_end=lambda: mq_end, mq_in_zone=lambda: mq_in_zone, mq_motion=lambda: mq_motion, mq_rect=lambda: mq_rect, mq_row0=lambda: mq_row0, mq_start=lambda: mq_start, mq_tick=lambda: mq_tick, mq_update=lambda: mq_update, name_l=lambda: name_l, native_ctx=lambda: native_ctx, navigate=lambda: navigate, new_item=lambda: new_item, new_menu=lambda: new_menu, new_tab=lambda: new_tab, notify=lambda: notify, ole_out=lambda: ole_out, open_about=lambda: open_about, open_action=lambda: open_action, open_autoclean=lambda: open_autoclean, open_bulk_rename=lambda: open_bulk_rename, open_checksum=lambda: open_checksum, open_cleaner=lambda: open_cleaner, open_collections=lambda: open_collections, open_compare=lambda: open_compare, open_convert_images=lambda: open_convert_images, open_diff=lambda: open_diff, open_duplicates=lambda: open_duplicates, open_explorer=lambda: open_explorer, open_folder_history=lambda: open_folder_history, open_ftp=lambda: open_ftp, open_games=lambda: open_games, open_health=lambda: open_health, open_howto=lambda: open_howto, open_integrity=lambda: open_integrity, open_item=lambda: open_item, open_largest=lambda: open_largest, open_localsend=lambda: open_localsend, open_malware=lambda: open_malware, open_new_tab=lambda: open_new_tab, open_notify=lambda: open_notify, open_ocr=lambda: open_ocr, open_organize=lambda: open_organize, open_palette=lambda: open_palette, open_photo_info=lambda: open_photo_info, open_preview=lambda: open_preview, open_recent_changes=lambda: open_recent_changes, open_recycle_bin=lambda: open_recycle_bin, open_settings=lambda: open_settings, open_shortcuts=lambda: open_shortcuts, open_similar_photos=lambda: open_similar_photos, open_storage=lambda: open_storage, open_storage_types=lambda: open_storage_types, open_sync=lambda: open_sync, open_system_info=lambda: open_system_info, open_terminal=lambda: open_terminal, open_treemap=lambda: open_treemap, open_tutorial=lambda: open_tutorial, open_undo_history=lambda: open_undo_history, open_vault=lambda: open_vault, open_whats_new=lambda: open_whats_new, open_with=lambda: open_with, over_b=lambda: over_b, palette_actions=lambda: palette_actions, pane=lambda: pane, pane_frames=lambda: pane_frames, pane_of=lambda: pane_of, panes=lambda: panes, path_e=lambda: path_e, pathv=lambda: pathv, perf_tick=lambda: perf_tick, pin=lambda: pin, pop_closed=lambda: pop_closed, popup=lambda: popup, popup_below=lambda: popup_below, prev_lbl=lambda: prev_lbl, prev_txt=lambda: prev_txt, push_undo=lambda: push_undo, pv_show=lambda: pv_show, q=lambda: q, qp=lambda: qp, qroot=lambda: qroot, refresh=lambda: refresh, refresh_labels=lambda: refresh_labels, rename_saved=lambda: rename_saved, rename_to=lambda: rename_to, render_grid=lambda: render_grid, render_preview=lambda: render_preview, reopen_tab=lambda: reopen_tab, restyle=lambda: restyle, rev_var=lambda: rev_var, root=lambda: root, run_transfer=lambda: run_transfer, save_cfg=lambda: save_cfg, save_tab=lambda: save_tab, save_workspace=lambda: save_workspace, scan_with_defender=lambda: scan_with_defender, sel=lambda: sel, sel_status=lambda: sel_status, select_pattern=lambda: select_pattern, set_b=lambda: set_b, set_dir_info=lambda: set_dir_info, set_flag=lambda: set_flag, set_hl=lambda: set_hl, set_job_fields=lambda: set_job_fields, set_label=lambda: set_label, set_pil=lambda: set_pil, set_score=lambda: set_score, set_sort=lambda: set_sort, setup_icons=lambda: setup_icons, show=lambda: show, show_glyph=lambda: show_glyph, show_image=lambda: show_image, show_in_folder=lambda: show_in_folder, show_props=lambda: show_props, show_text=lambda: show_text, show_toast=lambda: show_toast, side=lambda: side, side_items=lambda: side_items, side_sections=lambda: side_sections, sort_rows=lambda: sort_rows, sort_var=lambda: sort_var, split_b=lambda: split_b, split_btns=lambda: split_btns, st=lambda: st, start_content_index=lambda: start_content_index, start_index=lambda: start_index, status=lambda: status, step_preview=lambda: step_preview, subfolders=lambda: subfolders, switch_tab=lambda: switch_tab, sync_chips=lambda: sync_chips, tabbar=lambda: tabbar, tabs=lambda: tabs, tags_store=lambda: tags_store, themed=lambda: themed, threat_check=lambda: threat_check, thumb_cache_get=lambda: thumb_cache_get, thumb_cache_put=lambda: thumb_cache_put, thumb_dir=lambda: thumb_dir, to_other=lambda: to_other, toggle_details=lambda: toggle_details, toggle_grid=lambda: toggle_grid, toggle_split=lambda: toggle_split, toplevel=lambda: toplevel, track_tick=lambda: track_tick, tree=lambda: tree, type_select=lambda: type_select, update_details=lambda: update_details, update_headings=lambda: update_headings, weekly_check=lambda: weekly_check, welcome=lambda: welcome, zoom=lambda: zoom))  # live getters: ui_* modules read these (cells may be filled in later)
+    A._bind(dict(ACTION_LABEL=lambda: ACTION_LABEL, _thumb_file=lambda: _thumb_file, ac_state=lambda: ac_state, activate=lambda: activate, after_change=lambda: after_change, alerts=lambda: alerts, app_restart=lambda: app_restart, autoclean_now=lambda: autoclean_now, autoclean_tick=lambda: autoclean_tick, bk_hooks=lambda: bk_hooks, bk_running=lambda: bk_running, bk_tick=lambda: bk_tick, build_crumbs=lambda: build_crumbs, build_sidebar=lambda: build_sidebar, build_tabs=lambda: build_tabs, cfg=lambda: cfg, change_setting=lambda: change_setting, check=lambda: check, chip_lay=lambda: chip_lay, chipbar=lambda: chipbar, chipbtns=lambda: chipbtns, choose_dest=lambda: choose_dest, clear_hl=lambda: clear_hl, clear_preview=lambda: clear_preview, clear_recent=lambda: clear_recent, close_preview=lambda: close_preview, close_tab=lambda: close_tab, cmd_items=lambda: cmd_items, cmdbar=lambda: cmdbar, commit_visit=lambda: commit_visit, compress=lambda: compress, conflict_dialog=lambda: conflict_dialog, copy_as=lambda: copy_as, copy_path=lambda: copy_path, crumb_menu=lambda: crumb_menu, crumbs=lambda: crumbs, cur=lambda: cur, delete_workspace=lambda: delete_workspace, dens_var=lambda: dens_var, dest_menu=lambda: dest_menu, det=lambda: det, det_btns=lambda: det_btns, det_rows=lambda: det_rows, details_btn=lambda: details_btn, details_var=lambda: details_var, do_copy=lambda: do_copy, do_delete=lambda: do_delete, do_paste=lambda: do_paste, do_rename=lambda: do_rename, do_undo=lambda: do_undo, drag=lambda: drag, drop_target=lambda: drop_target, edit_path=lambda: edit_path, edit_tags=lambda: edit_tags, entry=lambda: entry, export_csv=lambda: export_csv, extract=lambda: extract, ff_var=lambda: ff_var, fit=lambda: fit, folder_sizes_now=lambda: folder_sizes_now, forget_file=lambda: forget_file, forget_folder=lambda: forget_folder, forget_view=lambda: forget_view, fsize=lambda: fsize, fsz_var=lambda: fsz_var, gcv=lambda: gcv, gmq=lambda: gmq, go_back=lambda: go_back, go_up=lambda: go_up, gpool=lambda: gpool, grid=lambda: grid, grid_icon=lambda: grid_icon, grid_index_at=lambda: grid_index_at, grid_load_thumb=lambda: grid_load_thumb, grid_schedule=lambda: grid_schedule, grid_see=lambda: grid_see, grid_select=lambda: grid_select, grid_thumb_ready=lambda: grid_thumb_ready, grid_tiles_in=lambda: grid_tiles_in, grid_var=lambda: grid_var, gridf=lambda: gridf, gsb=lambda: gsb, hard_refresh=lambda: hard_refresh, health_btn=lambda: health_btn, health_watch=lambda: health_watch, hidden_var=lambda: hidden_var, hist_path=lambda: hist_path, home=lambda: home, icon_box=lambda: icon_box, info=lambda: info, info_labels=lambda: info_labels, invert_selection=lambda: invert_selection, lay=lambda: lay, layout_cmdbar=lambda: layout_cmdbar, load_tab=lambda: load_tab, load_workspace=lambda: load_workspace, local_folders=lambda: local_folders, make_menu=lambda: make_menu, make_problem_report=lambda: make_problem_report, mark_active=lambda: mark_active, mid=lambda: mid, mq=lambda: mq, mq_clear=lambda: mq_clear, mq_end=lambda: mq_end, mq_in_zone=lambda: mq_in_zone, mq_motion=lambda: mq_motion, mq_rect=lambda: mq_rect, mq_row0=lambda: mq_row0, mq_start=lambda: mq_start, mq_tick=lambda: mq_tick, mq_update=lambda: mq_update, name_l=lambda: name_l, native_ctx=lambda: native_ctx, navigate=lambda: navigate, new_item=lambda: new_item, new_menu=lambda: new_menu, new_tab=lambda: new_tab, note_edit_current=lambda: note_edit_current, note_edit_selected=lambda: note_edit_selected, notes=lambda: notes, notes_update=lambda: notes_update, notify=lambda: notify, ole_out=lambda: ole_out, open_about=lambda: open_about, open_action=lambda: open_action, open_autoclean=lambda: open_autoclean, open_bulk_rename=lambda: open_bulk_rename, open_checksum=lambda: open_checksum, open_cleaner=lambda: open_cleaner, open_cloud=lambda: open_cloud, open_collections=lambda: open_collections, open_compare=lambda: open_compare, open_convert_images=lambda: open_convert_images, open_diff=lambda: open_diff, open_duplicates=lambda: open_duplicates, open_explorer=lambda: open_explorer, open_folder_history=lambda: open_folder_history, open_ftp=lambda: open_ftp, open_games=lambda: open_games, open_health=lambda: open_health, open_howto=lambda: open_howto, open_integrity=lambda: open_integrity, open_item=lambda: open_item, open_keys=lambda: open_keys, open_largest=lambda: open_largest, open_localsend=lambda: open_localsend, open_malware=lambda: open_malware, open_new_tab=lambda: open_new_tab, open_notify=lambda: open_notify, open_ocr=lambda: open_ocr, open_organize=lambda: open_organize, open_palette=lambda: open_palette, open_photo_info=lambda: open_photo_info, open_preview=lambda: open_preview, open_recent_changes=lambda: open_recent_changes, open_recycle_bin=lambda: open_recycle_bin, open_rules=lambda: open_rules, open_settings=lambda: open_settings, open_shortcuts=lambda: open_shortcuts, open_similar_photos=lambda: open_similar_photos, open_storage=lambda: open_storage, open_storage_types=lambda: open_storage_types, open_sync=lambda: open_sync, open_system_info=lambda: open_system_info, open_tags=lambda: open_tags, open_terminal=lambda: open_terminal, open_themes=lambda: open_themes, open_timeline=lambda: open_timeline, open_transfers=lambda: open_transfers, open_treemap=lambda: open_treemap, open_tutorial=lambda: open_tutorial, open_undo_history=lambda: open_undo_history, open_vault=lambda: open_vault, open_whats_new=lambda: open_whats_new, open_with=lambda: open_with, over_b=lambda: over_b, palette_actions=lambda: palette_actions, pane=lambda: pane, pane_frames=lambda: pane_frames, pane_of=lambda: pane_of, panes=lambda: panes, path_e=lambda: path_e, pathv=lambda: pathv, perf_tick=lambda: perf_tick, pin=lambda: pin, pop_closed=lambda: pop_closed, popup=lambda: popup, popup_below=lambda: popup_below, prev_lbl=lambda: prev_lbl, prev_txt=lambda: prev_txt, push_undo=lambda: push_undo, pv_show=lambda: pv_show, q=lambda: q, qp=lambda: qp, qroot=lambda: qroot, refresh=lambda: refresh, refresh_labels=lambda: refresh_labels, remember_view=lambda: remember_view, rename_saved=lambda: rename_saved, rename_to=lambda: rename_to, render_grid=lambda: render_grid, render_preview=lambda: render_preview, reopen_tab=lambda: reopen_tab, restyle=lambda: restyle, rev_var=lambda: rev_var, root=lambda: root, run_transfer=lambda: run_transfer, save_cfg=lambda: save_cfg, save_tab=lambda: save_tab, save_workspace=lambda: save_workspace, scan_with_defender=lambda: scan_with_defender, sel=lambda: sel, sel_status=lambda: sel_status, select_pattern=lambda: select_pattern, set_b=lambda: set_b, set_dir_info=lambda: set_dir_info, set_flag=lambda: set_flag, set_hl=lambda: set_hl, set_job_fields=lambda: set_job_fields, set_label=lambda: set_label, set_pil=lambda: set_pil, set_score=lambda: set_score, set_sort=lambda: set_sort, setup_icons=lambda: setup_icons, show=lambda: show, show_glyph=lambda: show_glyph, show_image=lambda: show_image, show_in_folder=lambda: show_in_folder, show_props=lambda: show_props, show_text=lambda: show_text, show_toast=lambda: show_toast, shred_selected=lambda: shred_selected, side=lambda: side, side_items=lambda: side_items, side_sections=lambda: side_sections, sort_rows=lambda: sort_rows, sort_var=lambda: sort_var, split_b=lambda: split_b, split_btns=lambda: split_btns, st=lambda: st, start_content_index=lambda: start_content_index, start_index=lambda: start_index, status=lambda: status, step_preview=lambda: step_preview, subfolders=lambda: subfolders, switch_tab=lambda: switch_tab, sync_chips=lambda: sync_chips, tabbar=lambda: tabbar, tabs=lambda: tabs, tags_store=lambda: tags_store, themed=lambda: themed, threat_check=lambda: threat_check, thumb_cache_get=lambda: thumb_cache_get, thumb_cache_put=lambda: thumb_cache_put, thumb_dir=lambda: thumb_dir, to_other=lambda: to_other, toggle_details=lambda: toggle_details, toggle_grid=lambda: toggle_grid, toggle_split=lambda: toggle_split, toplevel=lambda: toplevel, track_tick=lambda: track_tick, tree=lambda: tree, type_select=lambda: type_select, update_details=lambda: update_details, update_headings=lambda: update_headings, weekly_check=lambda: weekly_check, welcome=lambda: welcome, zoom=lambda: zoom))  # live getters: ui_* modules read these (cells may be filled in later)
 
     cfg = {**DEFAULT_CFG, **load_config()}
     I.OCR_PDFS = cfg["ocr_pdfs"]
+    ff_platform.GUARD["on"] = bool(cfg.get("skip_online_only", True))  # never open online-only files by itself
+    ff_themes.register_all(cfg.get("custom_themes"))  # your own themes next to the built-in ones
     set_theme(cfg["theme"], cfg["accent"])
     import traceback
     threading.excepthook = lambda a: log_error("thread: " + "".join(
@@ -89,7 +106,7 @@ def run_gui(background=True, hidden=False, open_path=None):
         ff_core_sampler = __import__("ff_core").start_sampler
         ff_core_sampler(float(os.environ["FF_SAMPLER"]) if os.environ["FF_SAMPLER"].replace(".", "").isdigit() and float(os.environ["FF_SAMPLER"]) < 1 else 1.0)
     root = tk.Tk()
-    root.title("Foldwise")
+    root.title("Pinefiles")
     root.geometry(f"{min(1280, root.winfo_screenwidth() - 100)}x{min(760, root.winfo_screenheight() - 140)}+40+40")
     try:
         root.iconbitmap(default=str(ensure_icon()))
@@ -109,7 +126,10 @@ def run_gui(background=True, hidden=False, open_path=None):
     ThemedBox.root = root
     messagebox, simpledialog = ThemedBox, ThemedAsk  # app-styled dialogs everywhere
     tags_store = I.Tags(DB_DIR / "tags.db")
+    notes = ff_notes.Notes(DB_DIR / "notes.json")
+    alerts = ff_alerts.Alerts(DB_DIR / "alerts.json")
     ff_core.TAGS = tags_store
+    ff_core.NOTES = notes
     cindex = I.ContentIndex(DB_DIR / "content.db")
     con = connect()
     home = str(Path.home())
@@ -388,7 +408,32 @@ def run_gui(background=True, hidden=False, open_path=None):
         st["sort_key"], st["sort_rev"] = key, rev
         sort_var.set(key)
         rev_var.set(rev)
+        remember_view(sort=key, rev=rev)
         show(sort_rows(st["rows"]), msg=status.get(), keep=True)
+
+    def remember_view(**view):
+        """The folder you are in keeps this sort order / list-or-thumbnails choice (ff_views); only while browsing a folder in single-pane view."""
+        if cfg.get("remember_views", True) and st["mode"] == "browse" and not pane["split"]:
+            save_cfg(folder_views=ff_views.remember(cfg.get("folder_views", {}), st["cwd"], **view))
+            return True
+        return False
+
+    def forget_view(_=None):
+        save_cfg(folder_views=ff_views.forget(cfg.get("folder_views", {}), st["cwd"]))
+        apply_folder_view(st["cwd"])
+        refresh()
+
+    def apply_folder_view(path):
+        """On entering a folder: its remembered view, or the defaults (name order, your usual list/thumbnails choice)."""
+        if not cfg.get("remember_views", True) or pane["split"]:
+            return
+        v = ff_views.recall(cfg.get("folder_views", {}), path)
+        st["sort_key"], st["sort_rev"] = v.get("sort"), bool(v.get("rev"))
+        sort_var.set(st["sort_key"] or "")
+        rev_var.set(st["sort_rev"])
+        want = v.get("grid", cfg["view_grid"])
+        if want != grid["on"]:
+            toggle_grid(value=want, store=False)
 
     def size_text(r):
         name, path, size, mtime, isdir = r
@@ -729,6 +774,7 @@ def run_gui(background=True, hidden=False, open_path=None):
         st["cwd"] = path
         st["select"] = select
         st["fs_tok"] += 1
+        apply_folder_view(path)
         record_visit(path)
         if cfg["start"] == "last":
             save_cfg(last_folder=path)
@@ -1004,7 +1050,8 @@ def run_gui(background=True, hidden=False, open_path=None):
 
     ACTION_LABEL = {"cleaner": "Open the disk cleaner", "largest": "Find the biggest files", "taskmgr": "Open Task Manager",
                     "update": "Open Windows Update", "security": "Open Windows Security", "backup": "Set up / run a backup",
-                    "storage": "Open Storage settings", "health": "Open PC health"}
+                    "storage": "Open Storage settings", "health": "Open PC health", "devmgr": "Open Device Manager",
+                    "autoclean": "Set up auto-clean", "sectab": "Open the Security tab", "malware": "Open the malware check", "about": "Open About"}
 
     show_toast = bind(ui_health.show_toast)
 
@@ -1487,11 +1534,25 @@ def run_gui(background=True, hidden=False, open_path=None):
     open_collections = bind(ui_more.open_collections)
     open_howto = bind(ui_more.open_howto)
     open_localsend = bind(ui_localsend.open_localsend)
+    open_transfers = bind(ui_ops.open_transfers)
+    open_rules = bind(ui_rules.open_rules)
+    open_themes = bind(ui_themes.open_themes)
+    open_keys = bind(ui_keys.open_keys)
+    open_timeline = bind(ui_timeline.open_timeline)
+    open_tags = bind(ui_tags.open_tags)
+    open_cloud = bind(ui_cloud.open_cloud)
+    note_edit_selected = bind(ui_notes.edit_selected)
+    note_edit_current = bind(ui_notes.edit_current)
+    notes_update = bind(ui_notes.update)
+    shred_selected = bind(ui_ops.shred_selected)
     open_folder_history = bind(ui_more.open_folder_history)
     rename_saved = bind(ui_more.rename_saved)
     track_tick = bind(ui_more.track_tick)
     root.after(7000, lambda: ui_more.crash_check(A) if not os.environ.get("FF_NO_CRASHCHECK") else None)
-    root.after(6500, lambda: ui_localsend.autostart(A))  # only does anything when 'Receive files from nearby devices' was left on
+    ui_notes.setup(A)
+    root.after(6500, lambda: ui_localsend.autostart(A))
+    root.after(45000, lambda: ui_alerts.autostart(A))  # checks only when a saved search has its alert switched on
+    root.after(20000, lambda: ui_rules.autostart(A))  # only does anything when 'Receive files from nearby devices' was left on
     folder_sizes_now = bind(ui_extras.folder_sizes_now)
     export_csv = bind(ui_extras.export_csv)
     if background and not cfg["setup_done"]:
@@ -1583,13 +1644,6 @@ def run_gui(background=True, hidden=False, open_path=None):
     for _i, (_, _t) in enumerate(pane_frames):
         _t.bind("<FocusIn>", lambda e, _i=_i: activate(_i), add="+")
         _t.bind("<Tab>", tab_key)
-    root.bind("<Control-Shift-D>", toggle_split)
-    root.bind("<Control-k>", open_palette)
-    root.bind("<F1>", open_shortcuts)
-    root.bind("<Control-Shift-S>", select_pattern)
-    root.bind("<Control-i>", invert_selection)
-    root.bind("<Control-Shift-C>", copy_path)
-    root.bind("<Alt-Return>", lambda e: show_props())
     for _n in range(1, 10):
         root.bind(f"<Control-Key-{_n}>", lambda e, _n=_n: (switch_tab(_n - 1) if _n <= len(tabs) else None))
     _save_win = {"job": None}
@@ -1601,29 +1655,16 @@ def run_gui(background=True, hidden=False, open_path=None):
             _save_win["job"] = root.after(1200, lambda: ui_extras.remember_window(A))
     root.bind("<Configure>", _win_changed, add="+")
     ui_extras.theme_tick(A)
-    root.bind("<Control-Shift-T>", reopen_tab)
-    root.bind("<Control-Shift-G>", toggle_grid)
-    root.bind("<Control-Shift-N>", lambda e: new_item("dir"))
-    root.bind("<Control-Shift-R>", lambda e: open_bulk_rename())
-    root.bind("<Control-z>", do_undo)
-    root.bind("<Control-t>", lambda e: new_tab())
-    root.bind("<Control-w>", lambda e: close_tab())
-    root.bind("<Control-Tab>", lambda e: next_tab(1))
-    root.bind("<Control-Shift-Tab>", lambda e: next_tab(-1))
-    root.bind("<F5>", hard_refresh)
-    root.bind("<F3>", toggle_details)
-    root.bind("<Alt-Left>", go_back)
-    root.bind("<Alt-Right>", go_fwd)
-    root.bind("<Alt-Up>", go_up)
-    root.bind("<Control-Return>", show_in_folder)
-    root.bind("<Control-l>", edit_path)
-    root.bind("<Control-f>", lambda e: (entry.focus_set(), entry.select_range(0, "end")))
     entry.bind("<FocusIn>", lambda e: ui_pages.show_files(A), add="+")
-    root.bind("<Control-comma>", open_settings)
-    root.bind("<Control-equal>", lambda e: zoom(1))
-    root.bind("<Control-plus>", lambda e: zoom(1))
-    root.bind("<Control-minus>", lambda e: zoom(-1))
-    root.bind("<Control-q>", lambda e: root.destroy())
+    ui_keys.install(A, {  # the global shortcuts; their keys come from ff_keys (and your changes in Tools > Keyboard shortcuts)
+        "search": lambda e: (entry.focus_set(), entry.select_range(0, "end")), "path": edit_path, "palette": open_palette, "refresh": hard_refresh,
+        "back": go_back, "forward": go_fwd, "up": go_up, "details": toggle_details,
+        "new_tab": lambda e: new_tab(), "close_tab": lambda e: close_tab(), "reopen_tab": reopen_tab, "next_tab": lambda e: next_tab(1),
+        "prev_tab": lambda e: next_tab(-1), "split": toggle_split, "grid": toggle_grid,
+        "new_folder": lambda e: new_item("dir"), "bulk_rename": lambda e: open_bulk_rename(), "select_pattern": select_pattern, "invert": invert_selection,
+        "copy_path": copy_path, "properties": lambda e: show_props(), "show_in_folder": show_in_folder, "undo": do_undo,
+        "shortcuts": open_shortcuts, "settings": open_settings, "zoom_in": lambda e: zoom(1), "zoom_out": lambda e: zoom(-1), "quit": lambda e: root.destroy()})
+    root.bind("<Control-plus>", lambda e: zoom(1))  # fixed alias of Zoom in
     entry.bind("<Up>", lambda e: hist_move(-1))
     entry.bind("<Return>", lambda e: record_query(q.get()))
     entry.bind("<Down>", lambda e: hist_move(1) or (tree.focus_set(), tree.get_children() and tree.selection_set(
@@ -1758,8 +1799,8 @@ def run_gui(background=True, hidden=False, open_path=None):
         root.protocol("WM_DELETE_WINDOW", root.withdraw if tray else root.destroy)
         if not label:
             root.after(500, lambda: messagebox.showwarning(
-                "Foldwise", "Couldn't register a global hotkey (all candidates taken). "
-                "Pick another with:  python foldwise.py --hotkey ctrl+alt+x"))
+                "Pinefiles", "Couldn't register a global hotkey (all candidates taken). "
+                "Pick another with:  python pinefiles.py --hotkey ctrl+alt+x"))
 
     for _, _t in pane_frames:
         _t.tag_configure("alt", background=T["alt"] if cfg.get("zebra", True) else T["bg"])
@@ -1800,13 +1841,13 @@ def run_gui(background=True, hidden=False, open_path=None):
 
 def selftest():
     """--selftest: prove that this build (source or packaged exe) has everything it needs. Writes the result to
-    %TEMP%\\foldwise-selftest.txt (a packaged exe has no console) and returns the exit code."""
+    %TEMP%\\pinefiles-selftest.txt (a packaged exe has no console) and returns the exit code."""
     import importlib
     import tempfile
     problems = []
     for mod in ("ff_core", "ff_extras", "ff_index", "ff_clean", "ff_health", "ff_shell", "ff_ocr", "ff_update", "ui_health", "ui_cleaner",
                 "ui_tools", "ui_settings", "ui_preview", "ui_grid", "ui_dragselect", "ui_fileops", "ui_nav", "ui_toolbar", "ui_about",
-                "ff_malware", "ff_vault", "ff_notify", "ff_elevated", "ff_support", "ui_malware", "ui_pages", "ui_extras", "ui_tour", "ui_browse", "ui_more", "ui_games", "ui_picker", "ff_localsend", "ui_localsend", "cryptography", "ff_platform", "tkinter", "PIL.Image", "pypdf", "pypdfium2", "paramiko",
+                "ff_malware", "ff_vault", "ff_notify", "ff_elevated", "ff_support", "ui_malware", "ui_pages", "ui_extras", "ui_tour", "ui_browse", "ui_more", "ui_games", "ui_picker", "ff_localsend", "ui_localsend", "ui_ops", "ff_rules", "ui_rules", "ff_themes", "ui_themes", "ff_notes", "ui_notes", "ff_keys", "ui_keys", "ff_timeline", "ui_timeline", "ui_tags", "ff_views", "ff_cloud", "ui_cloud", "ff_alerts", "ui_alerts", "cryptography", "ff_platform", "tkinter", "PIL.Image", "pypdf", "pypdfium2", "paramiko",
                 "cryptography.hazmat.primitives.ciphers.aead", "winrt.windows.media.ocr"):
         try:
             importlib.import_module(mod)
@@ -1825,8 +1866,8 @@ def selftest():
     except Exception as e:  # noqa
         problems.append(f"tk: {e}")
     import ff_update
-    text = f"Foldwise {ff_update.APP_VERSION} ({ff_update.mode()})\n" + ("OK\n" if not problems else "PROBLEMS:\n" + "\n".join(problems) + "\n")
-    Path(tempfile.gettempdir(), "foldwise-selftest.txt").write_text(text, encoding="utf-8")
+    text = f"Pinefiles {ff_update.APP_VERSION} ({ff_update.mode()})\n" + ("OK\n" if not problems else "PROBLEMS:\n" + "\n".join(problems) + "\n")
+    Path(tempfile.gettempdir(), "pinefiles-selftest.txt").write_text(text, encoding="utf-8")
     print(text)
     return 1 if problems else 0
 
@@ -1836,11 +1877,11 @@ def main(a):
     if ff_update.boot_check() == "rolled back":  # a new version that kept failing was replaced by the previous one
         ff_update.restart_app()
         return
-    ff_core.migrate_shortcuts()  # FileFinder -> Foldwise: replace the old shortcuts once
-    ff_core.heal_default_folder_opener()  # Foldwise deleted/moved while it was the default folder opener: give folders back to Explorer
+    ff_core.migrate_shortcuts()  # FileFinder -> Pinefiles: replace the old shortcuts once
+    ff_core.heal_default_folder_opener()  # Pinefiles deleted/moved while it was the default folder opener: give folders back to Explorer
     ff_update.cleanup_old()  # leftovers of a live update (the old exe that kept running while the new one was installed)
     if "--version" in a:
-        print(f"Foldwise {ff_update.APP_VERSION}")
+        print(f"Pinefiles {ff_update.APP_VERSION}")
     elif "--selftest" in a:
         sys.exit(selftest())
     elif "--index" in a:
@@ -1855,16 +1896,16 @@ def main(a):
         if ff_update.frozen():
             dest = a[a.index("--install-dir") + 1] if "--install-dir" in a else None
             exe = ff_update.install(dest, autostart="--no-autostart" not in a, shortcuts="--no-shortcuts" not in a)
-            print(f"Installed to {exe}. Start Foldwise from the Start menu.")
+            print(f"Installed to {exe}. Start Pinefiles from the Start menu.")
         else:
             make_shortcut(shortcut_paths()[0])
-            print("Start menu shortcut created. Launch 'Foldwise' once, then use your hotkey.")
+            print("Start menu shortcut created. Launch 'Pinefiles' once, then use your hotkey.")
     elif "--uninstall" in a:
         ff_update.uninstall(remove_data="--remove-data" in a)
-        print("Foldwise will be removed when this window closes. Your settings were kept." if "--remove-data" not in a else "Foldwise and its data will be removed.")
+        print("Pinefiles will be removed when this window closes. Your settings were kept." if "--remove-data" not in a else "Pinefiles and its data will be removed.")
     elif "--autostart" in a:
         make_shortcut(shortcut_paths()[1], "--hidden")
-        print("Foldwise will now start (hidden-in-background) at login.")
+        print("Pinefiles will now start (hidden-in-background) at login.")
     elif "--remove-autostart" in a:
         shortcut_paths()[1].unlink(missing_ok=True)
         print("Autostart removed.")
@@ -1872,11 +1913,11 @@ def main(a):
         spec = a[a.index("--hotkey") + 1]
         parse_hotkey(spec)
         save_config(hotkey=spec)
-        print("Hotkey set to", spec, "- quit Foldwise from the tray icon and relaunch to apply.")
+        print("Hotkey set to", spec, "- quit Pinefiles from the tray icon and relaunch to apply.")
     elif "--set-default-folder-opener" in a:
         set_default_folder_opener(True)
-        print("Done. Programs that open a folder via Windows now open it in Foldwise.")
-        print("Undo any time with:  Foldwise.exe --restore-default-folder-opener")
+        print("Done. Programs that open a folder via Windows now open it in Pinefiles.")
+        print("Undo any time with:  Pinefiles.exe --restore-default-folder-opener")
     elif "--restore-default-folder-opener" in a:
         set_default_folder_opener(False)
         print("Done. Explorer opens folders again.")

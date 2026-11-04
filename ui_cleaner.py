@@ -228,7 +228,7 @@ def open_cleaner(A):
         ttk.Button(bt_, text="Done (rescan to apply)", command=d.destroy).pack(side="right")
     ttk.Button(btns, text="Protected folders…", command=edit_protected).pack(side="left")
     ttk.Button(btns, text="Auto-clean...", command=A.open_autoclean).pack(side="left", padx=8)
-    ttk.Button(btns, text="Show in Foldwise", command=reveal_item).pack(side="left")
+    ttk.Button(btns, text="Show in Pinefiles", command=reveal_item).pack(side="left")
     dup_b = ttk.Button(btns, text="Review duplicates in detail…", command=lambda: A.open_duplicates("mine"))
     ttk.Button(btns, text="Close", command=win.destroy).pack(side="right")
 
@@ -339,7 +339,7 @@ def open_cleaner(A):
             A.after_change()
             text = f"Freed {human_size(freed)} for good." if freed else ""
             if binned:
-                text += f"\nMoved {human_size(binned)} to the Recycle Bin — empty the Recycle Bin (tick it in the list) to free that space too. Ctrl+Z in Foldwise restores them."
+                text += f"\nMoved {human_size(binned)} to the Recycle Bin — empty the Recycle Bin (tick it in the list) to free that space too. Ctrl+Z in Pinefiles restores them."
             if failed:
                 text += f"\n\n{len(failed)} item(s) were skipped (in use or protected), e.g. {os.path.basename(failed[0][0])}: {failed[0][1]}."
             A.status.set(f"Disk cleaner: freed {human_size(freed)}" + (f", {human_size(binned)} in the Recycle Bin" if binned else ""))
@@ -410,7 +410,7 @@ def open_duplicates(A, scope="folder"):
         if not ids:
             return
         paths = [t2.item(i, "text").replace("★  ", "") for i in ids]
-        if not messagebox.askyesno("Delete", f"Move {len(paths)} file(s) to the Recycle Bin?\n(Ctrl+Z in Foldwise brings them back.)", parent=win):
+        if not messagebox.askyesno("Delete", f"Move {len(paths)} file(s) to the Recycle Bin?\n(Ctrl+Z in Pinefiles brings them back.)", parent=win):
             return
         if recycle(paths):
             A.push_undo("delete", paths)
@@ -421,7 +421,7 @@ def open_duplicates(A, scope="folder"):
                     t2.delete(g)
             A.after_change()
         else:
-            messagebox.showerror("Foldwise", "Couldn't delete some of them (in use or access denied).", parent=win)
+            messagebox.showerror("Pinefiles", "Couldn't delete some of them (in use or access denied).", parent=win)
 
     def reveal():
         ids = files_selected()
@@ -433,7 +433,7 @@ def open_duplicates(A, scope="folder"):
     btns.pack(fill="x", padx=10, pady=10)
     ttk.Button(btns, text="Select extra copies (keep the best one)", style="Accent.TButton", command=pick_extras).pack(side="left")
     ttk.Button(btns, text="Move selected to Recycle Bin", command=trash).pack(side="left", padx=8)
-    ttk.Button(btns, text="Show in Foldwise", command=reveal).pack(side="left")
+    ttk.Button(btns, text="Show in Pinefiles", command=reveal).pack(side="left")
     ttk.Button(btns, text="Close", command=win.destroy).pack(side="right")
 
     def scan():
@@ -567,7 +567,7 @@ def open_largest(A):
             fill()
             A.after_change()
         else:
-            messagebox.showerror("Foldwise", "Couldn't delete some of them (in use or access denied).", parent=win)
+            messagebox.showerror("Pinefiles", "Couldn't delete some of them (in use or access denied).", parent=win)
 
     def reveal():
         c = chosen()
@@ -580,12 +580,12 @@ def open_largest(A):
             try:
                 ff_platform.open_path(c[0])
             except OSError as e:
-                messagebox.showerror("Foldwise", str(e), parent=win)
+                messagebox.showerror("Pinefiles", str(e), parent=win)
 
     btns = tk.Frame(win, bg=T["bg"])
     btns.pack(fill="x", padx=10, pady=10)
     ttk.Button(btns, text="Move selected to Recycle Bin", command=trash).pack(side="left")
-    ttk.Button(btns, text="Show in Foldwise", command=reveal).pack(side="left", padx=8)
+    ttk.Button(btns, text="Show in Pinefiles", command=reveal).pack(side="left", padx=8)
     ttk.Button(btns, text="Open", command=open_file).pack(side="left")
     ttk.Button(btns, text="Close", command=win.destroy).pack(side="right")
     t4.bind("<Double-1>", lambda e: open_file())

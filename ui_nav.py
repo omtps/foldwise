@@ -8,6 +8,7 @@ import os
 import time
 import tkinter as tk
 import ff_platform
+import ui_alerts
 import ui_pages
 from ff_core import ThemedAsk as simpledialog
 from ff_core import ThemedBox as messagebox
@@ -135,6 +136,8 @@ def side_popup(A, e):
         m.add_command(label="Unpin from sidebar", command=lambda: (
             A.save_cfg(pins=[p for p in A.cfg["pins"] if p != val]), A.build_sidebar()))
     elif kind == "search" and val in A.cfg["saved"].values():
+        name = next(k for k, v in A.cfg["saved"].items() if v == val)
+        m.add_command(label="Stop alerting about new files" if ui_alerts.enabled(A, name) else "Alert me about new files", command=lambda: ui_alerts.toggle(A, name))
         m.add_command(label="Rename saved search", command=lambda: A.rename_saved(val))
         m.add_command(label="Delete saved search", command=lambda: (
             A.save_cfg(saved={k: v for k, v in A.cfg["saved"].items() if v != val}), A.build_sidebar()))
@@ -156,6 +159,7 @@ def side_popup(A, e):
 
 
 def build_crumbs(A):
+    A.notes_update()
     for w in A.crumbs.winfo_children():
         w.destroy()
     p = os.path.normpath(A.st["cwd"])

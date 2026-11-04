@@ -76,22 +76,22 @@ def _steps(A):
         ("Duplicates with previews", "Select two files in a group and both previews appear on the right, so you can see they really are the same "
                                      "before anything goes to the Recycle Bin. Largest files and Similar photos work the same way.",
          lambda: _find(_tool(A, "open_duplicates"), "PreviewPane") or _first(ui_pages.active(), "Treeview")),
-        ("Recycle Bin and Recent changes", "Recycle Bin lists what you deleted with its original folder and date and puts items back where they came from (Foldwise never empties it). "
+        ("Recycle Bin and Recent changes", "Recycle Bin lists what you deleted with its original folder and date and puts items back where they came from (Pinefiles never empties it). "
                                            "Recent changes shows what was created or modified in the last hour, day or week.",
          lambda: (ui_pages.open_tools(A), ui_pages._S["rows"].get("Recycle Bin") or ui_pages._S["nav"])[1]),
         ("PC health", "A score plus tabs for disks, memory, security, startup apps, network, programs and trends. "
                       "Recommendations come with a fix button; nothing is changed without you.", lambda: _tool(A, "open_health")),
-        ("Malware check", "Uses Windows Defender's engine and adds Foldwise's own deep check for suspicious startup entries and unsigned programs. "
+        ("Malware check", "Uses Windows Defender's engine and adds Pinefiles's own deep check for suspicious startup entries and unsigned programs. "
                           "Findings are scored, can be quarantined and restored.", lambda: _tool(A, "open_malware")),
         ("Backups", "Copies new and changed files to a drive you choose, daily or weekly, and never deletes anything. Set it up in the Backups tab.",
          lambda: _tool(A, "open_health", "backups")),
-        ("Files, vault and sharing", "Encrypted vault, folder sync, checksums, photo tools, OCR, FTP/SFTP/WebDAV and 'Foldwise on another PC' are in the "
+        ("Files, vault and sharing", "Encrypted vault, folder sync, checksums, photo tools, OCR, FTP/SFTP/WebDAV and 'Pinefiles on another PC' are in the "
                                     "'Files & photos' and 'Connect & share' groups of this list.",
          lambda: (ui_pages.open_tools(A), ui_pages._S["rows"].get("Encrypted vault") or ui_pages._S["nav"])[1]),
         ("Customize", "Themes (Adwaita Dark / Light, Follow Windows...), accent colour, rounded buttons, fonts, what is on or off, and the Setup wizard.",
          lambda: _tool(A, "open_settings")),
         ("You're set", "F1 lists every shortcut; Ctrl+K opens the command palette where every tool and setting is a short search away. "
-                       "Replay this tour any time: Tools > Foldwise > Tutorial.", lambda: (_files(A), None)[1]),
+                       "Replay this tour any time: Tools > Pinefiles > Tutorial.", lambda: (_files(A), None)[1]),
     ]
 
 
@@ -193,7 +193,7 @@ def _draw(A, title, text):
     tk.Label(inner, text=title, bg=T["panel"], fg=T["fg"], font=("Segoe UI", 15, "bold")).pack(anchor="w")
     tk.Label(inner, text=text, bg=T["panel"], fg=T["fg"], wraplength=370, justify="left", font=("Segoe UI", 10)).pack(anchor="w", pady=(6, 12))
     show = tk.BooleanVar(value=A.cfg.get("show_tutorial", True))
-    ttk.Checkbutton(inner, text="Show this tour when Foldwise starts", variable=show,
+    ttk.Checkbutton(inner, text="Show this tour when Pinefiles starts", variable=show,
                     command=lambda: A.save_cfg(show_tutorial=show.get())).pack(anchor="w", pady=(0, 10))
     row = tk.Frame(inner, bg=T["panel"])
     row.pack(fill="x")

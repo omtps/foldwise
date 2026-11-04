@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 import tkinter as tk
 from ff_core import ThemedAsk as simpledialog
 from ff_core import ThemedBox as messagebox
@@ -57,18 +58,44 @@ def do_undo(A, _=None):
 
 
 def run_transfer(A, paths, folder, move, clear_clip=False):
-    if A.st["xfer"]:
-        A.status.set("Another transfer is still running…")
-        return
+    """Copy/move into `folder`. Several transfers wait in a queue (Tools > Transfers: pause, cancel, see them), one runs at a time."""
     if any(X.zip_is_virtual(p) for p in paths):
         move = False  # taking files out of an archive is always a copy
-    A.st["xfer"], A.st["xcancel"] = True, False
-    verb = "Moving" if move else "Copying"
+    A.st["xseq"] = A.st.get("xseq", 0) + 1
+    job = {"id": A.st["xseq"], "paths": list(paths), "folder": folder, "move": move, "clear": clear_clip, "state": "waiting", "done": 0, "total": 0,
+           "name": "", "msg": ""}
+    A.st.setdefault("xqueue", []).append(job)
+    if A.st["xfer"]:
+        waiting = sum(1 for j in A.st["xqueue"] if j["state"] == "waiting")
+        A.status.set(f"Queued: {waiting} transfer(s) waiting for the current one (Tools > Transfers)")
+    _pump(A)
+
+
+def _pump(A):
+    """Start the next waiting transfer when none is running."""
+    if A.st["xfer"]:
+        return
+    job = next((j for j in A.st.get("xqueue", []) if j["state"] == "waiting"), None)
+    if job is None:
+        return
+    job["state"] = "running"
+    A.st["xfer"], A.st["xcancel"], A.st["xpause"] = True, False, False
+    verb = "Moving" if job["move"] else "Copying"
     A.status.set(f"{verb}…")
 
+    def waiting_count():
+        return sum(1 for j in A.st["xqueue"] if j["state"] == "waiting")
+
     def prog(done, total, name):
+        job.update(done=done, total=total, name=name)
         pct = int(done * 100 / total) if total else 0
-        A.root.after(0, A.status.set, f"{verb} {name}  —  {pct}%    (Esc to cancel)")
+        more = f"  ({waiting_count()} more waiting)" if waiting_count() else ""
+        A.root.after(0, A.status.set, f"{verb} {name}  \u2014  {pct}%{more}    (Esc to cancel)")
+
+    def cancelled():  # also where Pause waits: the copy stops inside Windows' copy routine until you press Resume
+        while A.st.get("xpause") and not A.st["xcancel"]:
+            time.sleep(0.1)
+        return A.st["xcancel"]
 
     conflict = {"all": None}
 
@@ -82,13 +109,15 @@ def run_transfer(A, paths, folder, move, clear_clip=False):
             act = result.get("act", "cancel")
             if result.get("all") and act != "cancel":
                 conflict["all"] = act
+        if act == "merge" and not (os.path.isdir(src) and os.path.isdir(target)):
+            act = "keep"
         if act == "replace" and not recycle([target]):
             act = "keep"
         return act
 
     def work():
         try:
-            pairs, err = X.transfer(paths, folder, move, prog, lambda: A.st["xcancel"], resolve_conflict), None
+            pairs, err = X.transfer(job["paths"], job["folder"], job["move"], prog, cancelled, resolve_conflict, verify=bool(A.cfg.get("verify_copies"))), None
         except X.Cancelled:
             pairs, err = [], "Cancelled"
         except Exception as e:  # noqa
@@ -97,21 +126,28 @@ def run_transfer(A, paths, folder, move, clear_clip=False):
 
     def done(pairs, err):
         A.st["xfer"] = False
+        job["state"] = "cancelled" if err == "Cancelled" else "failed" if err else "done"
+        job["msg"] = err or f"{len(pairs)} item(s)"
         if err and err != "Cancelled":
-            messagebox.showerror("Foldwise", err)
+            messagebox.showerror("Pinefiles", err)
         if pairs:
-            A.push_undo("move" if move else "copy", pairs)
-            if clear_clip:
+            if job["move"] and len(pairs) <= 2000:  # tags and notes go with the files that moved
+                for src, dst in pairs:
+                    A.tags_store.move(src, dst)
+                    A.notes.move(src, dst)
+            A.push_undo("move" if job["move"] else "copy", pairs)
+            if job["clear"]:
                 A.st["clip"] = ([], False)
-        A.status.set("Cancelled" if err == "Cancelled" else f"{verb[:-3]}ed {len(pairs)} item(s)")
+        A.status.set("Cancelled" if err == "Cancelled" else f"{verb[:-3]}ed {len(pairs)} item(s)" + (" and checked every copy" if A.cfg.get("verify_copies") and not err else ""))
         A.after_change()
+        _pump(A)
 
     threading.Thread(target=work, daemon=True).start()
 
 
 def conflict_dialog(A, src, target, result, ev):
     try:
-        win = A.toplevel("Item already exists", "620x330", tab=False)
+        win = A.toplevel("Item already exists", "700x360", tab=False)
         win.attributes("-topmost", True)
         win.grab_set()
         f = ttk.Frame(win, padding=20)
@@ -140,9 +176,14 @@ def conflict_dialog(A, src, target, result, ev):
             finally:
                 ev.set()
 
-        for label, act, style in (("Replace (old one → Recycle Bin)", "replace", "Accent.TButton"),
+        both_dirs = os.path.isdir(src) and os.path.isdir(target)
+        choices = [("Merge folders", "merge", "Accent.TButton")] if both_dirs else []
+        if both_dirs:
+            ttk.Label(f, text="Merge keeps everything in both folders; you are only asked about files that exist in both.", style="DetKey.TLabel",
+                      background=T["bg"], wraplength=560).pack(anchor="w")
+        for label, act, style in (choices + [("Replace (old one → Recycle Bin)", "replace", "TButton" if both_dirs else "Accent.TButton"),
                                   ("Keep both", "keep", "TButton"), ("Skip", "skip", "TButton"),
-                                  ("Cancel", "cancel", "TButton")):
+                                  ("Cancel", "cancel", "TButton")]):
             ttk.Button(row, text=label, style=style, command=lambda a=act: choose(a)).pack(side="left", padx=4)
         win.protocol("WM_DELETE_WINDOW", lambda: choose("cancel"))
         win.bind("<Escape>", lambda e: choose("cancel"))
@@ -173,7 +214,7 @@ def open_item(A, _=None):
                 A.save_cfg(recent=([r[1]] + [p for p in A.cfg["recent"] if p != r[1]])[:300])
                 A.commit_visit(os.path.dirname(r[1]))
         except OSError as e:
-            messagebox.showerror("Foldwise", str(e))
+            messagebox.showerror("Pinefiles", str(e))
 
 
 def open_new_tab(A, _=None):
@@ -238,7 +279,7 @@ def do_delete(A, _=None):
     if recycle(paths):
         A.push_undo("delete", paths)
     else:
-        messagebox.showerror("Foldwise", ("Nothing was deleted." if recycle.last_rc[1] else
+        messagebox.showerror("Pinefiles", ("Nothing was deleted." if recycle.last_rc[1] else
                                              f"Could not delete (Windows code {recycle.last_rc[0]}).") +
                              "\nDetails are in error.log")
     A.after_change()
@@ -258,9 +299,10 @@ def do_rename(A, _=None):
         try:
             os.rename(old[1], dest)
         except OSError as e:
-            messagebox.showerror("Foldwise", str(e))
+            messagebox.showerror("Pinefiles", str(e))
             return
         A.tags_store.move(old[1], dest)
+        A.notes.move(old[1], dest)
         A.push_undo("rename", (old[1], dest))
         A.st["select"] = dest
         A.after_change()
@@ -278,7 +320,7 @@ def new_item(A, kind):
     try:
         os.mkdir(dest) if kind == "dir" else open(dest, "a").close()
     except OSError as e:
-        messagebox.showerror("Foldwise", str(e))
+        messagebox.showerror("Pinefiles", str(e))
         return
     A.push_undo("create", [dest])
     if A.q.get():
@@ -311,7 +353,7 @@ def compress(A, _=None):
             err = None
         except Exception as e:  # noqa
             err = e
-        A.root.after(0, lambda: (messagebox.showerror("Foldwise", str(err)) if err else A.push_undo("create", [dest]),
+        A.root.after(0, lambda: (messagebox.showerror("Pinefiles", str(err)) if err else A.push_undo("create", [dest]),
                                A.after_change()))
 
     threading.Thread(target=work, daemon=True).start()
@@ -333,7 +375,7 @@ def extract(A, _=None):
             err = None
         except Exception as e:  # noqa
             err = e
-        A.root.after(0, lambda: (messagebox.showerror("Foldwise", str(err)) if err else A.push_undo("create", [dest]),
+        A.root.after(0, lambda: (messagebox.showerror("Pinefiles", str(err)) if err else A.push_undo("create", [dest]),
                                A.after_change()))
 
     threading.Thread(target=work, daemon=True).start()
@@ -355,9 +397,10 @@ def rename_to(A, old, new):
     try:
         os.rename(old[1], dest)
     except OSError as e:
-        messagebox.showerror("Foldwise", str(e))
+        messagebox.showerror("Pinefiles", str(e))
         return
     A.tags_store.move(old[1], dest)
+    A.notes.move(old[1], dest)
     A.push_undo("rename", (old[1], dest))
     A.st["select"] = dest
     A.after_change()

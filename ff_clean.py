@@ -1,4 +1,4 @@
-"""Smart disk cleaner backend for Foldwise.
+"""Smart disk cleaner backend for Pinefiles.
 
 The scanners only LOOK: they never delete. They return items as (path, size, mtime, note) so the GUI can show a
 preview and let the user decide. The only deleting code is `delete_items`, which refuses anything outside the
@@ -326,7 +326,7 @@ def scan_dev(cancel=lambda: False, home=None, older_days=90, min_bytes=5 << 20, 
 # ----------------------------------------------------------------------------------- uninstall leftovers
 LEFTOVER_SKIP = {"microsoft", "windows", "packages", "temp", "programs", "publishers", "connecteddevicesplatform", "d3dscache",
                  "comms", "history", "historyhub", "tempstate", "virtualstore", "pip", "npm", "nuget", "crashdumps", "diagnostics",
-                 "placeholdertilelogofolder", "software distribution", "package cache", "usoprivate", "usoshared", "ssh", "foldwise",
+                 "placeholdertilelogofolder", "software distribution", "package cache", "usoprivate", "usoshared", "ssh", "pinefiles", "foldwise", "filefinder",
                  "claude", "anthropic", "python", "packagecache", "wer", "regid", "microsoftedge", "onedrive", "apple computer",
                  "wsl", "docker", "lxss", "chocolatey", "electron", "ms-playwright", "ms-playwright-go", "nvidia", "nvidia corporation"}
 

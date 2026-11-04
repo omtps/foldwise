@@ -1,4 +1,4 @@
-"""PC health checks for Foldwise.
+"""PC health checks for Pinefiles.
 
 Everything here only READS system state (disk space, drive health, memory, battery, security status, startup list,
 event log). The one thing that writes is `run_backup`, which COPIES new/changed files to a destination you chose and
@@ -7,6 +7,7 @@ never deletes or overwrites anything newer.
 import ctypes
 import json
 import os
+import shutil
 import subprocess
 import time
 from ctypes import wintypes
@@ -229,23 +230,47 @@ def startup_items():
     return out
 
 
+def _iso(t):
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(str(t).replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+def impact_level(mem, cpu_s):
+    """'high' | 'medium' | 'low' from what a start-up program uses right now (memory in bytes, CPU seconds so far)."""
+    if cpu_s >= 20 or mem >= 400e6:
+        return "high"
+    if cpu_s >= 5 or mem >= 150e6:
+        return "medium"
+    return "low"
+
+
 def startup_impact(items):
-    """Adds what each start-up program costs RIGHT NOW: running (bool), mem (bytes), cpu_s (CPU seconds used so far), matched by exe path.
-    (Windows' own boot-time trace needs administrator rights, so this uses real measurements of the running programs instead.)"""
-    procs = _as_list(_json("@(Get-Process | Where-Object { $_.Path } | ForEach-Object { [pscustomobject]@{ P=$_.Path; M=[int64]$_.WorkingSet64; C=[double]$_.CPU } })", 60))
-    by = {}
+    """Adds what each start-up program costs RIGHT NOW: running (bool), mem (bytes), cpu_s (CPU seconds used so far), start_s (seconds after
+    sign-in that it started, from the process start times; sign-in = when Explorer started) and impact ('high'/'medium'/'low'), matched by exe path.
+    (Windows' own boot-time trace needs administrator rights: Pinefiles can read it on request, see ff_elevated.boot_report.)"""
+    procs = _as_list(_json("@(Get-Process | Where-Object { $_.Path } | ForEach-Object { [pscustomobject]@{ P=$_.Path; N=$_.ProcessName; M=[int64]$_.WorkingSet64; C=[double]$_.CPU; "
+                           "S=$(try { $_.StartTime.ToUniversalTime().ToString('o') } catch { $null }) } })", 60))
+    by, logon = {}, None
     for p in procs:
         if isinstance(p, dict) and p.get("P"):
-            m, c = by.get(p["P"].lower(), (0, 0.0))
-            by[p["P"].lower()] = (m + int(p.get("M") or 0), c + float(p.get("C") or 0))
+            m, c, st = by.get(p["P"].lower(), (0, 0.0, None))
+            t = _iso(p.get("S"))
+            by[p["P"].lower()] = (m + int(p.get("M") or 0), c + float(p.get("C") or 0), min([x for x in (st, t) if x is not None], default=None))
+            if str(p.get("N", "")).lower() == "explorer" and t is not None:
+                logon = t if logon is None else min(logon, t)
     import re
     out = []
     for it in items:
         cmd = os.path.expandvars(it.get("command", ""))
         mm = re.match(r'^"([^"]+)"', cmd) or re.match(r"^(.+?\.(?:exe|bat|cmd|scr))(?:\s|$)", cmd, re.I)
         exe = (mm.group(1) if mm else cmd.split(" ")[0]).lower()
-        m, c = by.get(exe, (0, 0.0))
-        out.append(dict(it, running=exe in by, mem=m, cpu_s=c))
+        m, c, st = by.get(exe, (0, 0.0, None))
+        run = exe in by
+        out.append(dict(it, running=run, mem=m, cpu_s=c, start_s=(max(0.0, st - logon) if (st is not None and logon is not None) else None),
+                        impact=impact_level(m, c) if run else ""))
     return out
 
 
@@ -539,16 +564,16 @@ def history_load(path):
     try:
         with open(path, encoding="utf-8") as f:
             h = json.load(f)
-        return {"perf": h.get("perf", []), "hourly": h.get("hourly", []), "folders": h.get("folders", [])}
+        return {"perf": h.get("perf", []), "hourly": h.get("hourly", []), "folders": h.get("folders", []), "wear": h.get("wear", [])}
     except (OSError, ValueError):
-        return {"perf": [], "hourly": [], "folders": []}
+        return {"perf": [], "hourly": [], "folders": [], "wear": []}
 
 
 def history_add(path, kind, sample, keep=None):
     """Append a sample to the history file (perf: last 7 days of 5-minute samples, hourly: last 60 days)."""
     h = history_load(path)
     h[kind].append(sample)
-    keep = keep or (2016 if kind == "perf" else 52 if kind == "folders" else 1440)
+    keep = keep or (2016 if kind == "perf" else 52 if kind == "folders" else 600 if kind == "wear" else 1440)
     del h[kind][:-keep]
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
@@ -713,7 +738,7 @@ def wifi_info():
 def speed_test(nbytes=25_000_000, url="https://speed.cloudflare.com/__down?bytes=%d", progress=lambda done, total: None, cancel=lambda: False):
     """Download speed in Mbit/s: fetches `nbytes` from Cloudflare's public speed-test endpoint (sends nothing about you)."""
     import urllib.request
-    req = urllib.request.Request(url % nbytes if "%d" in url else url, headers={"User-Agent": "Foldwise"})
+    req = urllib.request.Request(url % nbytes if "%d" in url else url, headers={"User-Agent": "Pinefiles"})
     t0, got = time.time(), 0
     with urllib.request.urlopen(req, timeout=30) as r:
         while True:
@@ -958,7 +983,7 @@ def report_html(h, now=None):
            "h1{margin-bottom:0}h2{border-bottom:2px solid #e2e8f0;padding-bottom:4px;margin-top:28px}table{border-collapse:collapse;width:100%}"
            "td,th{text-align:left;padding:5px 8px;border-bottom:1px solid #e2e8f0}.s{font-size:54px;font-weight:700}.bar{background:#e2e8f0;height:10px;border-radius:5px}"
            ".bar i{display:block;height:10px;border-radius:5px;background:#3b82f6}@media print{body{margin:0}}</style>",
-           f"<h1>PC health report</h1><div style='color:#64748b'>{esc(time.strftime('%A %d %B %Y, %H:%M', time.localtime(now)))} &middot; made by Foldwise</div>",
+           f"<h1>PC health report</h1><div style='color:#64748b'>{esc(time.strftime('%A %d %B %Y, %H:%M', time.localtime(now)))} &middot; made by Pinefiles</div>",
            f"<div class=s style='color:{col['good'] if score >= 75 else col['warn'] if score >= 50 else col['bad']}'>{score}<small style='font-size:20px'> / 100 &mdash; {esc(score_label(score))}</small></div>",
            "<h2>What needs attention</h2><ul>"]
     for sev, text, _a in recs:
@@ -1032,3 +1057,191 @@ def weekly_summary(h):
     top = next((r[1] for r in recs if r[0] in ("bad", "warn")), None)
     return (f"Weekly check-up: health score {score}/100 ({score_label(score)})." +
             (f" {n} thing(s) need attention, e.g. {top}" if n else " Nothing needs attention.")), n
+
+
+# ------------------------------------------------------------------------------------------------ drive speed test
+def speed_verdict(r):
+    """One plain sentence about what the numbers mean."""
+    rd = r.get("seq_read_mbps") or 0
+    rr = r.get("rand_read_iops") or 0
+    if rd >= 2000:
+        kind = "as fast as a modern NVMe SSD"
+    elif rd >= 400:
+        kind = "typical for a SATA SSD or an entry-level NVMe SSD"
+    elif rd >= 80:
+        kind = "typical for a hard disk or a slow USB drive"
+    else:
+        kind = "very slow (an old USB stick, SD card or a drive that is busy or failing)"
+    extra = " Random access is slow for an SSD: check the drive is not nearly full or busy." if rd >= 400 and rr < 3000 else ""
+    return f"Sequential read {rd:.0f} MB/s: {kind}.{extra}"
+
+
+def disk_speed_test(folder, size_mb=256, progress=lambda pct, msg: None, cancel=lambda: False):
+    """Measure a drive: one temporary file (`size_mb`) in a sub-folder of `folder` is written and read back with the Windows file cache
+    switched off, then 4 KB random reads and writes are timed. The test file and its folder are always removed again.
+    Returns {'seq_write_mbps','seq_read_mbps','rand_read_iops','rand_write_iops','rand_read_mbps','rand_write_mbps'}."""
+    import ctypes
+    import random
+    if os.name != "nt":
+        raise OSError("The speed test is only available on Windows.")
+    size_mb = max(8, int(size_mb))
+    if shutil.disk_usage(folder).free < (size_mb * 2 + 1024) * (1 << 20):
+        raise OSError("Not enough free space on that drive for the test (needs about " + str(size_mb * 2 + 1024) + " MB).")
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.CreateFileW.restype = ctypes.c_void_p
+    k.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p]
+    k.VirtualAlloc.restype = ctypes.c_void_p
+    k.VirtualAlloc.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_ulong, ctypes.c_ulong]
+    k.VirtualFree.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_ulong]
+    k.ReadFile.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong), ctypes.c_void_p]
+    k.WriteFile.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong), ctypes.c_void_p]
+    k.SetFilePointerEx.argtypes = [ctypes.c_void_p, ctypes.c_longlong, ctypes.c_void_p, ctypes.c_ulong]
+    k.CloseHandle.argtypes = [ctypes.c_void_p]
+    bad = ctypes.c_void_p(-1).value
+    NOBUF, WTHRU = 0x20000000, 0x80000000
+    work = os.path.join(folder, "Pinefiles speed test")
+    path = os.path.join(work, "test.bin")
+    os.makedirs(work, exist_ok=True)
+    chunk, mb = 4 << 20, 1 << 20
+    buf = k.VirtualAlloc(None, chunk, 0x3000, 0x04)  # sector-aligned memory (the unbuffered API demands it)
+    ctypes.memmove(buf, os.urandom(chunk), chunk)
+    out = {}
+
+    held = set()  # handles still open: closed in `finally`, or the temp file could not be deleted after a cancel
+
+    def opn(write, create=False):
+        h = k.CreateFileW(path, 0x40000000 if write else 0x80000000, 0, None, 2 if create else 3, NOBUF | (WTHRU if write else 0), None)
+        if h in (None, bad):
+            raise ctypes.WinError(ctypes.get_last_error())
+        held.add(h)
+        return h
+
+    def close(h):
+        if h in held:
+            held.discard(h)
+            k.CloseHandle(h)
+
+    def seek(h, off):
+        k.SetFilePointerEx(h, off, None, 0)
+    n = ctypes.c_ulong(0)
+    try:
+        progress(2, "Writing…")
+        h = opn(True, True)
+        t = time.perf_counter()
+        for i in range(size_mb * mb // chunk):
+            if cancel():
+                raise InterruptedError("cancelled")
+            if not k.WriteFile(h, buf, chunk, ctypes.byref(n), None):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if i % 8 == 0:
+                progress(2 + 38 * i * chunk // (size_mb * mb), "Writing…")
+        close(h)
+        out["seq_write_mbps"] = size_mb / max(time.perf_counter() - t, 1e-6)
+        progress(40, "Reading…")
+        h = opn(False)
+        t = time.perf_counter()
+        for i in range(size_mb * mb // chunk):
+            if cancel():
+                raise InterruptedError("cancelled")
+            if not k.ReadFile(h, buf, chunk, ctypes.byref(n), None):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if i % 8 == 0:
+                progress(40 + 30 * i * chunk // (size_mb * mb), "Reading…")
+        out["seq_read_mbps"] = size_mb / max(time.perf_counter() - t, 1e-6)
+        progress(70, "Random reads…")
+        slots = size_mb * mb // 4096 - 1
+        ops, t0 = 0, time.perf_counter()
+        while ops < 3000 and time.perf_counter() - t0 < 5 and not cancel():
+            seek(h, random.randrange(slots) * 4096)
+            k.ReadFile(h, buf, 4096, ctypes.byref(n), None)
+            ops += 1
+        dt = max(time.perf_counter() - t0, 1e-6)
+        out["rand_read_iops"], out["rand_read_mbps"] = ops / dt, ops * 4096 / dt / mb
+        close(h)
+        progress(85, "Random writes…")
+        h = opn(True)
+        ops, t0 = 0, time.perf_counter()
+        while ops < 1500 and time.perf_counter() - t0 < 4 and not cancel():
+            seek(h, random.randrange(slots) * 4096)
+            k.WriteFile(h, buf, 4096, ctypes.byref(n), None)
+            ops += 1
+        dt = max(time.perf_counter() - t0, 1e-6)
+        out["rand_write_iops"], out["rand_write_mbps"] = ops / dt, ops * 4096 / dt / mb
+        close(h)
+        if cancel():
+            raise InterruptedError("cancelled")
+        progress(100, "Done")
+        return out
+    finally:
+        for h_ in list(held):
+            close(h_)
+        k.VirtualFree(buf, 0, 0x8000)
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        try:
+            os.rmdir(work)
+        except OSError:
+            pass
+
+
+# ------------------------------------------------------------------------------------------------ drivers
+IMPORTANT_CLASSES = {"DISPLAY", "NET", "MEDIA", "BLUETOOTH", "BIOMETRIC"}  # what you notice when it is out of date: graphics, network, audio, Bluetooth, fingerprint
+
+
+def driver_report():
+    """[{'name','maker','version','date','cls','signed','age_years','old'}] for the installed drivers, newest first. 'old' = a driver of
+    a non-Microsoft maker in an important class (graphics, network, audio, Bluetooth, storage, chipset) that is more than 3 years old,
+    or one that is not signed. Read-only."""
+    rows = _as_list(_json("@(Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | Where-Object { $_.DeviceName } | ForEach-Object { "
+                          "[pscustomobject]@{ N=$_.DeviceName; M=$_.Manufacturer; V=$_.DriverVersion; D=$(if ($_.DriverDate) { $_.DriverDate.ToString('yyyy-MM-dd') }); "
+                          "C=$_.DeviceClass; S=[bool]$_.IsSigned } })", 120))
+    return classify_drivers([r for r in rows if isinstance(r, dict)])
+
+
+def classify_drivers(rows, now=None):
+    from datetime import datetime
+    today = datetime.fromtimestamp(now or time.time())
+    out = []
+    for r in rows:
+        age = None
+        try:
+            dd = datetime.strptime(r.get("D") or "", "%Y-%m-%d")
+            age = (today - dd).days / 365.25 if dd.year >= 1990 else None  # (older dates are placeholders some vendors use)
+        except ValueError:
+            pass
+        maker = str(r.get("M") or "")
+        cls = str(r.get("C") or "").upper()
+        old = bool(age is not None and age > 3 and "microsoft" not in maker.lower() and cls in IMPORTANT_CLASSES)
+        unsigned = r.get("S") is False
+        out.append({"name": r.get("N") or "?", "maker": maker, "version": r.get("V") or "", "date": r.get("D") or "", "cls": cls.title(),
+                    "signed": not unsigned, "age_years": age, "old": old or unsigned})
+    return sorted(out, key=lambda d: (not d["old"], d["date"] or "0"), reverse=False)
+
+
+def driver_summary(drivers, problems):
+    old = [d for d in drivers if d["old"]]
+    bits = [f"{len(drivers)} drivers installed"]
+    bits.append(f"{len(old)} worth a look (older than 3 years or unsigned)" if old else "none look outdated")
+    bits.append(f"{len(problems)} device(s) reporting a problem" if problems else "no device reports a problem")
+    return ",  ".join(bits)
+
+
+# ------------------------------------------------------------------------------------------------ drive wear history
+def wear_sample(info=None, drives=None, now=None):
+    """One reading for the wear history from the elevated check (info['Drives']) or from physical_disks(): [] when nothing numeric is reported."""
+    out = []
+    for d in (info or {}).get("Drives") or []:
+        out.append({"name": d.get("Name"), "wear": d.get("WearPct"), "hours": d.get("PowerOnHours"), "temp": d.get("TempC"),
+                    "errs": (d.get("ReadErrors") or 0) + (d.get("WriteErrors") or 0)})
+    for d in drives or []:
+        out.append({"name": d.get("Name"), "wear": d.get("Wear"), "hours": d.get("Hours"), "temp": d.get("TempC"),
+                    "errs": (d.get("ReadErr") or 0) + (d.get("WriteErr") or 0)})
+    return [dict(o, t=now or time.time()) for o in out if any(isinstance(o.get(k), (int, float)) for k in ("wear", "hours"))]
+
+
+def wear_series(samples, name=None):
+    """[(t, wear %)] of one drive (the first with data when name is None), oldest first."""
+    pts = [(s["t"], s["wear"]) for s in samples if isinstance(s.get("wear"), (int, float)) and (name is None or s.get("name") == name)]
+    return sorted(pts)

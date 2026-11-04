@@ -8,7 +8,7 @@ def send(url, title, text, timeout=15):
     url = (url or "").strip()
     if not url.lower().startswith(("https://", "http://")):
         raise ValueError("The notification address must start with https://")
-    headers = {"User-Agent": "Foldwise"}
+    headers = {"User-Agent": "Pinefiles"}
     if "discord.com/api/webhooks" in url or "discordapp.com/api/webhooks" in url:
         body = json.dumps({"content": f"**{title}**\n{text}"[:1900]}).encode()
         headers["Content-Type"] = "application/json"

@@ -3,6 +3,7 @@
 Every function takes `A` first: a live view of the main window (ff_app.App) giving access to its state and helpers.
 """
 import ff_extras as X
+import ff_platform
 import ff_index as I
 import ff_shell as Sh
 import os
@@ -60,6 +61,10 @@ def view_menu(A):
         value=A.details_var.get()))
     m.add_checkbutton(label="Thumbnail grid  (Ctrl+Shift+G)", variable=A.grid_var,
                       command=lambda: A.toggle_grid(value=A.grid_var.get()))
+    m._remember = tk.BooleanVar(master=A.root, value=bool(A.cfg.get("remember_views", True)))  # (kept on the menu so it is not garbage collected)
+    m.add_checkbutton(label="Remember sort and view for each folder", variable=m._remember, command=lambda: A.change_setting(remember_views=m._remember.get()))
+    m.add_command(label="Forget the view of this folder", command=A.forget_view)
+    m.add_separator()
     m.add_checkbutton(label="Folder sizes", variable=A.fsz_var, command=lambda: A.set_flag("folder_sizes", A.fsz_var))
     m.add_checkbutton(label="Hidden files", variable=A.hidden_var, command=lambda: A.set_flag("show_hidden", A.hidden_var))
     m.add_separator()
@@ -272,6 +277,7 @@ def popup(A, e):
         if len(s) > 1:
             m.add_command(label="Bulk rename…", command=A.open_bulk_rename)
         m.add_command(label="Delete", command=A.do_delete)
+        m.add_command(label="Securely delete\u2026", command=A.shred_selected)
         m.add_separator()
         m.add_command(label="Compress to ZIP", command=A.compress)
         if not any(X.zip_is_virtual(r[1]) for r in s):
@@ -301,9 +307,12 @@ def popup(A, e):
         lm.add_command(label="No label", command=lambda: A.set_label(""))
         m.add_cascade(label="Colour label", menu=lm)
         m.add_command(label="Tags\u2026", command=A.edit_tags)
+        if len(s) == 1 and not X.zip_is_virtual(s[0][1]):
+            m.add_command(label="Note\u2026", command=A.note_edit_selected)
     m.add_separator()
     m.add_cascade(label="New", menu=A.new_menu())
     if not s:
+        m.add_command(label="Note for this folder\u2026", command=A.note_edit_current)
         m.add_command(label="Export this list to CSV…", command=A.export_csv)
     m.add_command(label="Open terminal here", command=A.open_terminal)
     m.add_command(label="Open this folder in Explorer", command=A.open_explorer)
@@ -344,6 +353,7 @@ def restyle(A):
 
 def change_setting(A, **kw):
     A.save_cfg(**kw)
+    ff_platform.GUARD["on"] = bool(A.cfg.get("skip_online_only", True))
     A.dens_var.set(A.cfg["row_height"])
     A.restyle()
 

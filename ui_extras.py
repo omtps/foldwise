@@ -6,10 +6,12 @@ import io
 import os
 import threading
 import tkinter as tk
-from ui_picker import filedialog
 from tkinter import ttk
 
+import ff_keys
 from ff_core import T, TEXT_EXTS, connect, fmt_date, human_size, windows_prefers_light
+from ui_picker import filedialog
+
 
 def open_tutorial(A, _=None):
     """The guided tour (ui_tour): opens the real windows and points at what each step explains."""
@@ -17,18 +19,10 @@ def open_tutorial(A, _=None):
     ui_tour.start(A)
 
 
-SHORTCUTS = [
-    ("Search & navigation", [("Ctrl+F", "Focus the search box"), ("Ctrl+L", "Edit the path"), ("Ctrl+K", "Command palette"),
-                             ("Backspace / Alt+←", "Up / back"), ("F5", "Refresh"), ("Space", "Quick look"), ("F3", "Details pane on/off")]),
-    ("Tabs & panes", [("Ctrl+T", "New tab"), ("Ctrl+W", "Close tab"), ("Ctrl+Shift+T", "Reopen closed tab"), ("Ctrl+1 … 9", "Jump to tab"),
-                      ("Ctrl+Shift+D", "Split view"), ("Tab", "Switch pane (split view)"), ("Ctrl+Shift+G", "Thumbnail grid")]),
-    ("Files", [("Ctrl+Shift+S", "Select by pattern (*.jpg)"), ("Ctrl+I", "Invert selection"), ("Ctrl+C / X / V", "Copy / cut / paste"), ("F2", "Rename"), ("Ctrl+Shift+R", "Bulk rename"), ("Delete", "Delete (Recycle Bin)"),
-               ("Ctrl+Z", "Undo"), ("Ctrl+Shift+N", "New folder"), ("Ctrl+A", "Select all")]),
+TOKENS = [
     ("Search tokens (type them in the search box)", [("ext:pdf,docx", "File types"), ("size:>100mb", "Bigger / smaller than"), ("modified:today", "also yesterday, week, 3d, 2w, 2026-05, >2026-01-01"),
                                                      ("name:report", "Only in the file name"), ("re:^IMG_\\d+", "Regular expression"), ("type:folder", "Folders or files"),
-                                                     ("content:invoice", "Inside documents (needs the content index)"), ("tag:work  label:red", "Your tags and colours"), ("-word", "Exclude a word")]),
-    ("App", [("F1", "This sheet"), ("Right-click a tool", "Tools list: pin it to the toolbar"), ("Ctrl+Shift+C", "Copy full path of the selection"), ("Alt+Enter", "Properties"), ("Ctrl+,", "Customize"), ("Ctrl + / Ctrl -", "Zoom"), ("Ctrl+Alt+F", "Show Foldwise from anywhere"),
-             ("Esc", "Close a pop-up, clear search (never closes the window)")]),
+                                                     ("content:invoice", "Inside documents (needs the content index)"), ("tag:work  label:red", "Your tags and colours"), ("note:invoice  note:*", "Your notes (a word in the note, or * for every note)"), ("-word", "Exclude a word")]),
 ]
 
 
@@ -296,7 +290,7 @@ def open_whats_new(A, _=None):
     win = A.toplevel("What's new", "760x600")
     f = ttk.Frame(win, padding=28)
     f.pack(fill="both", expand=True)
-    ttk.Label(f, text=f"What's new in Foldwise {ff_update.APP_VERSION}", font=("Segoe UI", 20, "bold")).pack(anchor="w", pady=(0, 8))
+    ttk.Label(f, text=f"What's new in Pinefiles {ff_update.APP_VERSION}", font=("Segoe UI", 20, "bold")).pack(anchor="w", pady=(0, 8))
     for ver, items in ff_update.WHATS_NEW:
         ttk.Label(f, text=f"VERSION {ver}", style="DetHead.TLabel", background=T["bg"]).pack(anchor="w", pady=(14, 4))
         for it in items:
@@ -310,7 +304,7 @@ def whats_new_check(A):
         first = not A.cfg.get("seen_version")
         A.save_cfg(seen_version=ff_update.APP_VERSION)
         if not first:  # a brand-new install has nothing to compare with
-            A.show_toast(f"Foldwise was updated to {ff_update.APP_VERSION}.", "See what's new", A.open_whats_new)
+            A.show_toast(f"Pinefiles was updated to {ff_update.APP_VERSION}.", "See what's new", A.open_whats_new)
 
 
 def open_shortcuts(A, _=None):
@@ -318,7 +312,7 @@ def open_shortcuts(A, _=None):
     f = ttk.Frame(win, padding=28)
     f.pack(fill="both", expand=True)
     ttk.Label(f, text="Keyboard shortcuts", font=("Segoe UI", 20, "bold")).pack(anchor="w", pady=(0, 6))
-    for group, items in SHORTCUTS:
+    for group, items in ff_keys.sheet(ff_keys.effective(A.cfg.get("keys"))) + TOKENS:
         ttk.Label(f, text=group.upper(), style="DetHead.TLabel", background=T["bg"]).pack(anchor="w", pady=(16, 4))
         g = ttk.Frame(f)
         g.pack(fill="x")

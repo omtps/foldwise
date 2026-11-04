@@ -12,6 +12,7 @@ from ui_picker import filedialog
 import ff_core
 import ff_health as HL
 import ff_support
+import ui_alerts
 import ui_pages
 from ff_core import T, ThemedAsk as simpledialog, ThemedBox as messagebox, human_size, log_error, low_priority
 
@@ -74,6 +75,8 @@ def open_collections(A):
             tk.Label(row, text=name, bg=T["bg"], fg=T["fg"], font=("Segoe UI", A.cfg["font_size"], "bold"), width=24, anchor="w").pack(side="left")
             tk.Label(row, text=query, bg=T["bg"], fg=T["muted"], font=("Segoe UI", A.cfg["font_size"]), anchor="w").pack(side="left", padx=8)
             ttk.Button(row, text="Delete", command=lambda n=name: delete(n)).pack(side="right")
+            on = tk.BooleanVar(master=row, value=ui_alerts.enabled(A, name))
+            ttk.Checkbutton(row, text="Alert me about new files", variable=on, command=lambda n=name: ui_alerts.toggle(A, n)).pack(side="right", padx=6)
             ttk.Button(row, text="Rename", command=lambda q=query: (rename_saved(A, q), draw_saved())).pack(side="right", padx=6)
             ttk.Button(row, text="Open", command=lambda q=query: _go(A, q)).pack(side="right")
 
@@ -95,6 +98,7 @@ def rename_saved(A, query):
         return
     new = new.strip()
     A.save_cfg(saved={(new if k == old else k): v for k, v in A.cfg["saved"].items()})
+    ui_alerts.renamed(A, old, new)
     A.build_sidebar()
 
 
@@ -108,12 +112,12 @@ def _plus(n):
 
 
 def open_folder_history(A):
-    """Follow folders you care about: Foldwise measures them now and then weekly (while you're away) and draws how they grow."""
+    """Follow folders you care about: Pinefiles measures them now and then weekly (while you're away) and draws how they grow."""
     win = A.toplevel("Folder size history", "1000x680")
     tp = _track_path(A)
     data = HL.track_load(tp)
     msg = tk.StringVar()
-    ttk.Label(win, text="Follow a folder and Foldwise measures it now and then once a week while you're away. The line shows how its size changes. "
+    ttk.Label(win, text="Follow a folder and Pinefiles measures it now and then once a week while you're away. The line shows how its size changes. "
               "Reading only: nothing is touched.", wraplength=900, padding=(18, 14, 18, 4)).pack(fill="x")
     ttk.Label(win, textvariable=msg, padding=(18, 0)).pack(fill="x")
     bt = ttk.Frame(win, padding=(14, 10))
@@ -290,7 +294,7 @@ def crash_check(A):
             A.status.set(f"Problem report saved on the Desktop: {z.name}")
         except Exception as e:  # noqa
             A.status.set(f"Couldn't make the report: {e}")
-    A.show_toast("Foldwise closed unexpectedly at some point. A problem report shows why.", "Make report", make)
+    A.show_toast("Pinefiles closed unexpectedly at some point. A problem report shows why.", "Make report", make)
 
 
 # ------------------------------------------------------------------------------------------------ short how-to guides inside tools
@@ -301,39 +305,50 @@ HOWTO = {
          "https:// address in the Server box."),
         ("2. Server and port", "Server is a name or address such as 192.168.1.20 or files.example.com. The port fills in by itself (21 for FTP and "
          "FTPS, 22 for SFTP). Change it only if your server owner tells you to."),
-        ("3. User and password", "Type them every time: Foldwise never saves the password. Public FTP servers often accept the user "
+        ("3. User and password", "Type them every time: Pinefiles never saves the password. Public FTP servers often accept the user "
          "'anonymous' with any password."),
         ("4. Connect", "Press Connect. With SFTP the first time shows the server's fingerprint: compare it with the one the server owner gave "
-         "you before you accept. Foldwise remembers it and warns you if it ever changes."),
+         "you before you accept. Pinefiles remembers it and warns you if it ever changes."),
         ("5. Browse", "Double-click a folder to open it, '..' goes up. The file list shows names and sizes."),
         ("6. Download and upload", "Select files in the list and press 'Download selected': they are saved into the folder that is open in "
-         "Foldwise's file view. 'Upload selected files from Foldwise' sends the files you selected in the file view. Both run in the "
+         "Pinefiles's file view. 'Upload selected files from Pinefiles' sends the files you selected in the file view. Both run in the "
          "background and tell you when they are done."),
         ("7. When you are done", "Close the tool: the connection is closed with it."),
     ]),
     "localsend": ("Sending files to nearby devices", [
-        ("1. What this is", "Foldwise speaks the LocalSend protocol, so it can exchange files directly with the free LocalSend app on Android, iPhone, "
-         "Windows, Mac and Linux (and with another Foldwise). Everything stays on your own network: nothing goes over the internet."),
+        ("1. What this is", "Pinefiles speaks the LocalSend protocol, so it can exchange files directly with the free LocalSend app on Android, iPhone, "
+         "Windows, Mac and Linux (and with another Pinefiles). Everything stays on your own network: nothing goes over the internet."),
         ("2. Install LocalSend on the other device", "Get LocalSend from your phone's app store or from localsend.org and open it. Both devices must be on the "
          "same Wi-Fi or network."),
         ("3. Sending from here", "Press 'Search again' until the device shows up in the list. If it does not, press 'Add by address…' and type the IP "
-         "address that LocalSend shows on the other device. Pick the device, choose what to send (Files…, A folder…, or 'Selected in Foldwise') "
-         "and press 'Send to the selected device'. The other device asks to accept; you can also right-click files in Foldwise > "
+         "address that LocalSend shows on the other device. Pick the device, choose what to send (Files…, A folder…, or 'Selected in Pinefiles') "
+         "and press 'Send to the selected device'. The other device asks to accept; you can also right-click files in Pinefiles > "
          "'Send to a nearby device…'."),
         ("4. Receiving here", "Tick 'Receive files from nearby devices'. Other devices can then see this PC under the name you chose. Every "
-         "incoming transfer asks you to Accept or Decline first (and receiving switches itself off after 20 minutes, never in the middle of a transfer), and the files are saved in the folder shown (a 'Foldwise received' folder in your Downloads "
+         "incoming transfer asks you to Accept or Decline first (and receiving switches itself off after 20 minutes, never in the middle of a transfer), and the files are saved in the folder shown (a 'Pinefiles received' folder in your Downloads "
          "unless you change it). Untick it and this PC is invisible again."),
-        ("5. Windows Firewall", "The first time you turn receiving on, Windows may ask to allow Foldwise on the network. Choose 'Private networks' "
+        ("5. Windows Firewall", "The first time you turn receiving on, Windows may ask to allow Pinefiles on the network. Choose 'Private networks' "
          "only. If other devices still cannot see this PC, use 'Add by address…' on them with this PC's address shown on the tool."),
         ("6. Good to know", "PIN-protected receivers are not supported yet. Transfers can be cancelled from either side. Files that already exist "
          "are never overwritten: the new one gets (1) added to its name."),
     ]),
+    "rules": ("Automatic rules", [
+        ("1. What they do", "A rule watches one folder (for example Downloads). When a file turns up that fits the rule, Pinefiles moves, copies, renames, tags or "
+         "colours it for you, for example 'pictures go to a folder in Pictures'. Rules never delete anything and never overwrite a file."),
+        ("2. Make one", "Press 'Ready-made rule' for a common one, or 'Add rule…'. Choose the folder to watch, which files (types, a word in the name, an age) "
+         "and what to do. A rule must say which files it is for, so it can never grab everything."),
+        ("3. Look before you trust", "Press 'Preview now': the activity list shows what would happen right now without changing anything. 'Run the rules now' does it once."),
+        ("4. Switch them on", "Tick 'Run my rules automatically…'. Pinefiles then checks about once a minute while it is open. A file must have been untouched for the "
+         "number of minutes you set, so downloads that are still arriving are left alone. Nothing runs while the box is unticked, and they never start by themselves "
+         "unless you left it ticked."),
+        ("5. Undo", "Moves and renames can be undone with Ctrl+Z (View > Undo history). Folders marked as protected in the cleaner are never touched."),
+    ]),
     "notify": ("Getting alerts on your phone", [
-        ("1. What you will get", "Foldwise can send its weekly check-up and malware warnings to your phone as a short message. Only that "
+        ("1. What you will get", "Pinefiles can send its weekly check-up and malware warnings to your phone as a short message. Only that "
          "message text is sent, never file names or contents of your files."),
         ("2. Easiest free way: ntfy", "Install the free ntfy app on your phone (Android or iPhone). In the app press + and subscribe to a topic "
-         "name that only you know, for example foldwise-yourname-4821. Anyone who knows the name could read the messages, so make it hard to guess."),
-        ("3. Paste the address here", "In Foldwise type  https://ntfy.sh/<your topic>  in the box (for example https://ntfy.sh/foldwise-yourname-4821) "
+         "name that only you know, for example pinefiles-yourname-4821. Anyone who knows the name could read the messages, so make it hard to guess."),
+        ("3. Paste the address here", "In Pinefiles type  https://ntfy.sh/<your topic>  in the box (for example https://ntfy.sh/pinefiles-yourname-4821) "
          "and press 'Save and send a test'. The test message should arrive on your phone within seconds."),
         ("4. Discord instead", "Create a webhook in a Discord channel you own (Channel settings > Integrations > Webhooks > New webhook > Copy "
          "webhook URL) and paste that address in the same box."),

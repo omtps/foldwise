@@ -77,7 +77,7 @@ def open_recycle_bin(A):
     ttk.Button(bt, text="Refresh", command=load).pack(side="left", padx=8)
     ttk.Button(bt, text="Open the Recycle Bin in Explorer", command=ff_platform.recycle_bin_folder).pack(side="left")
     ttk.Button(bt, text="Close", command=win.destroy).pack(side="right")
-    ttk.Label(bt, text="Emptying is left to Windows: Foldwise never empties the bin for you.", style="DetKey.TLabel",
+    ttk.Label(bt, text="Emptying is left to Windows: Pinefiles never empties the bin for you.", style="DetKey.TLabel",
               background=T["bg"]).pack(side="right", padx=14)
     load()
 

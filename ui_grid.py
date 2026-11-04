@@ -2,6 +2,7 @@
 
 Every function takes `A` first: a live view of the main window (ff_app.App) giving access to its state and helpers.
 """
+import ff_platform
 import ff_extras as X
 import ff_index as I
 import ff_shell as Sh
@@ -86,6 +87,8 @@ def grid_load_thumb(A, key, path, ext):
     def job():
         im = None
         try:
+            if ff_platform.is_online_only(path):
+                return  # an online-only file is not opened (that would download it); the tile keeps its icon
             im = A.thumb_cache_get(path)
             if im is not None:
                 A.root.after(0, A.grid_thumb_ready, key, im)
@@ -284,14 +287,16 @@ def grid_popup(A, e):
     A.popup(types.SimpleNamespace(widget=A.pane_frames[0][1], y=-1, x_root=e.x_root, y_root=e.y_root, state=e.state))
 
 
-def toggle_grid(A, _=None, value=None):
+def toggle_grid(A, _=None, value=None, store=True):
+    """Switch between list and thumbnails. store=False applies a remembered view without making it the new default."""
     on = (not A.grid["on"]) if value is None else value
     if on and A.pane["split"]:
         A.status.set("Thumbnail grid is for single-pane view — turn Split off first")
         A.grid_var.set(False)
         return
     A.grid["on"] = on
-    A.save_cfg(view_grid=on)
+    if store and not A.remember_view(grid=on):  # (with per-folder memory on, the choice belongs to this folder only)
+        A.save_cfg(view_grid=on)
     A.grid_var.set(on)
     if on:
         A.pane_frames[0][0].grid_forget()

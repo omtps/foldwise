@@ -1,12 +1,14 @@
-"""Windows shell integration for Foldwise, via ctypes (no extra packages):
+"""Windows shell integration for Pinefiles, via ctypes (no extra packages):
 
  - shell_thumbnail   the same thumbnails Explorer shows (PDF, video, Office, images...)
  - native_menu       the real Windows right-click menu (7-Zip, Git, Share, Send to...)
- - ole_drag          drag files out of Foldwise into other apps
+ - ole_drag          drag files out of Pinefiles into other apps
  - DropTarget        accept files dragged in from other apps / Explorer
 """
 import ctypes
 import os
+
+import ff_platform
 from ctypes import POINTER, byref, c_int, c_long, c_ulong, c_void_p, wintypes
 
 ole32, shell32, user32, gdi32 = ctypes.windll.ole32, ctypes.windll.shell32, ctypes.windll.user32, ctypes.windll.gdi32
@@ -97,6 +99,7 @@ class _BIH(ctypes.Structure):
                 ("biClrImportant", wintypes.DWORD)]
 
 
+@ff_platform.local_only(None)
 def shell_thumbnail(path, size=256):
     """PIL RGBA thumbnail from Windows' thumbnail providers, or None if the file has none."""
     from PIL import Image

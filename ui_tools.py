@@ -531,7 +531,7 @@ def open_ftp(A):
         names = [rows[i][0] for i in tv.selection() if i in rows and not rows[i][1]]
         dest = A.st["cwd"]
         if not c or not names or X.zip_is_virtual(dest):
-            msg.set("Select one or more FILES to download (they go into the folder Foldwise is showing).")
+            msg.set("Select one or more FILES to download (they go into the folder Pinefiles is showing).")
             return
         if not messagebox.askyesno("Download", f"Download {len(names)} file(s) from {host_v.get()} into\n{dest}?", parent=win):
             return
@@ -547,7 +547,7 @@ def open_ftp(A):
         c = alive["conn"]
         files = [r[1] for r in A.sel() if not r[4] and not X.zip_is_virtual(r[1])]
         if not c or not files:
-            msg.set("Select local FILES in Foldwise's list first, then press Upload.")
+            msg.set("Select local FILES in Pinefiles's list first, then press Upload.")
             return
         if not messagebox.askyesno("Upload", f"Upload {len(files)} file(s) to {host_v.get()}?", parent=win):
             return
@@ -561,7 +561,7 @@ def open_ftp(A):
     bt = ttk.Frame(win, padding=12)
     bt.pack(fill="x")
     ttk.Button(bt, text="Download selected", style="Accent.TButton", command=download).pack(side="left")
-    ttk.Button(bt, text="Upload selected files from Foldwise", command=upload).pack(side="left", padx=8)
+    ttk.Button(bt, text="Upload selected files from Pinefiles", command=upload).pack(side="left", padx=8)
     ttk.Button(bt, text="Refresh", command=refresh_list).pack(side="left")
     ttk.Button(bt, text="Close", command=win.destroy).pack(side="right")
     ttk.Button(bt, text="Tutorial", command=lambda: A.open_howto("ftp")).pack(side="right", padx=8)
@@ -576,7 +576,7 @@ def open_vault(A):
         if messagebox.askyesno("Encrypted vault", "Lock a folder into a vault?\n\nYes = choose a folder to lock.\nNo = choose a .ffvault file to unlock.", parent=A.root):
             s = ask_rows(A, "Choose the folder to lock", folder=True)
         else:
-            s = ask_rows(A, "Choose the vault to unlock", (("Foldwise vault", "*.ffvault"),))
+            s = ask_rows(A, "Choose the vault to unlock", (("Pinefiles vault", "*.ffvault"),))
     if not s:
         return
     item = s[0]
@@ -659,8 +659,9 @@ def open_similar_photos(A):
     win = A.toplevel("Similar photos", "980x680")
     alive = {"v": True}
     win.bind("<Destroy>", lambda e: alive.update(v=False) if e.widget is win else None)
-    ttk.Label(win, text=f"Looking for look-alike photos in {folder} (and its sub-folders). The biggest copy of each picture is kept; the others are suggested.",
-              wraplength=940, padding=(14, 12, 14, 4)).pack(fill="x")
+    where = {"folder": folder, "tok": 0}
+    intro = tk.StringVar()
+    ttk.Label(win, textvariable=intro, wraplength=940, padding=(14, 12, 14, 4)).pack(fill="x")
     msg = tk.StringVar(value="Scanning\u2026")
     ttk.Label(win, textvariable=msg, padding=(14, 4)).pack(fill="x")
     frm = tk.Frame(win, bg=T["bg"])
@@ -677,10 +678,30 @@ def open_similar_photos(A):
     pvs.watch(tv, lambda i: i if os.path.isfile(i) else None)
     tv.tag_configure("keep", foreground="#4ade80")
 
-    def work():
-        res = X.find_similar_images(folder, 5, lambda: not alive["v"], lambda n: alive["v"] and A.root.after(0, lambda: alive["v"] and msg.set(f"Looking at photo {n:,}\u2026")))
-        if res is not None and alive["v"]:
-            A.root.after(0, lambda: alive["v"] and fill(res))
+    def scan():
+        where["tok"] += 1
+        tok = where["tok"]
+        tv.delete(*tv.get_children())
+        msg.set("Scanning\u2026")
+        intro.set(f"Looking for look-alike photos in {where['folder']} (and its sub-folders). The biggest copy of each picture is kept; the others are suggested.")
+
+        def work():
+            res = X.find_similar_images(where["folder"], 5, lambda: not alive["v"] or tok != where["tok"],
+                                        lambda n: alive["v"] and tok == where["tok"] and A.root.after(0, lambda: alive["v"] and msg.set(f"Looking at photo {n:,}\u2026")))
+            if res is not None and alive["v"] and tok == where["tok"]:
+                A.root.after(0, lambda: alive["v"] and tok == where["tok"] and fill(res))
+        threading.Thread(target=work, daemon=True).start()
+
+    def choose():
+        from ui_picker import filedialog
+        d = filedialog.askdirectory(parent=win, title="Folder with your photos", initialdir=where["folder"])
+        if d:
+            where["folder"] = d
+            scan()
+
+    def select_suggested():
+        """Select every copy except the one marked to keep, in all groups."""
+        tv.selection_set([k for g in tv.get_children() for k in tv.get_children(g)[1:]])
 
     def fill(groups):
         extra = 0
@@ -703,8 +724,11 @@ def open_similar_photos(A):
     bt = ttk.Frame(win, padding=12)
     bt.pack(fill="x")
     ttk.Button(bt, text="Move selected to Recycle Bin", style="Accent.TButton", command=trash).pack(side="left")
+    ttk.Button(bt, text="Select all suggested copies", command=select_suggested).pack(side="left", padx=8)
+    ttk.Button(bt, text="Other folder\u2026", command=choose).pack(side="left")
     ttk.Button(bt, text="Close", command=win.destroy).pack(side="right")
-    threading.Thread(target=work, daemon=True).start()
+    win._photo_state = (where, scan, select_suggested, tv)  # (the tests drive the page through this)
+    scan()
 
 
 def open_photo_info(A):
@@ -751,7 +775,7 @@ def open_photo_info(A):
 def export_settings(A):
     from ui_picker import filedialog
     import json
-    p_ = filedialog.asksaveasfilename(parent=A.root, defaultextension=".json", initialfile="Foldwise settings.json", filetypes=[("Settings", "*.json")])
+    p_ = filedialog.asksaveasfilename(parent=A.root, defaultextension=".json", initialfile="Pinefiles settings.json", filetypes=[("Settings", "*.json")])
     if p_:
         keep = {k: v for k, v in A.cfg.items() if k not in ("frec", "visits", "space_history", "alerted", "seen_threats", "tabs", "autoclean_log")}
         Path(p_).write_text(json.dumps(keep, indent=1), encoding="utf-8")
@@ -768,12 +792,12 @@ def import_settings(A):
         data = json.loads(Path(p_).read_text(encoding="utf-8"))
         assert isinstance(data, dict)
     except (OSError, ValueError, AssertionError):
-        messagebox.showerror("Import", "That file isn't a Foldwise settings file.", parent=A.root)
+        messagebox.showerror("Import", "That file isn't a Pinefiles settings file.", parent=A.root)
         return
     ok = {k: v for k, v in data.items() if k in DEFAULT_CFG and isinstance(v, type(DEFAULT_CFG[k])) and k not in ("tabs",)}
-    if ok and messagebox.askyesno("Import settings", f"Apply {len(ok)} setting(s) from this file? Foldwise needs a restart afterwards.", parent=A.root):
+    if ok and messagebox.askyesno("Import settings", f"Apply {len(ok)} setting(s) from this file? Pinefiles needs a restart afterwards.", parent=A.root):
         A.save_cfg(**ok)
-        A.status.set("Settings imported \u2014 restart Foldwise to apply them")
+        A.status.set("Settings imported \u2014 restart Pinefiles to apply them")
 
 
 def open_treemap(A, path=None):

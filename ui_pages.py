@@ -18,8 +18,8 @@ DESC = {"Smart disk cleaner": "Free space safely", "Duplicate files": "Find iden
         "Sync two folders": "Keep two folders equal", "Checksum": "Verify a file's hash", "Convert images": "Resize or change format",
         "Photo details": "EXIF, remove location", "Look-alike photos": "Near-duplicate pictures", "Text from image / PDF": "OCR scanned pages",
         "Compare panes": "Differences of two folders", "FTP / SFTP / WebDAV": "Browse remote servers", "Phone notifications": "Alerts to your phone",
-        "Storage by file type": "Which types take the space", "Recycle Bin": "See and restore deleted files", "Folder size history": "Watch a folder grow over time", "Smart collections": "Ready-made searches", "Mini-games": "Something to do while a scan runs", "Nearby devices": "Send files to phones and PCs (LocalSend)", "Undo history": "What Ctrl+Z would undo", "Recent changes": "What changed lately", "Shortcuts & tips": "Every keyboard shortcut", "Tutorial": "A quick tour of Foldwise", "What's new": "Changes in this version",
-        "Customize": "Theme, behaviour, keys", "Storage & index": "Sizes, rebuild index", "About & updates": "Version, install, update"}
+        "Storage by file type": "Which types take the space", "Recycle Bin": "See and restore deleted files", "Folder size history": "Watch a folder grow over time", "Smart collections": "Ready-made searches", "Mini-games": "Something to do while a scan runs", "Nearby devices": "Send files to phones and PCs (LocalSend)", "Transfers": "Copy and move queue", "Photo timeline": "Your photos by year and month", "Tag manager": "Rename, merge, remove tags", "Cloud files": "Files that are only placeholders","Automatic rules": "Sort new files by themselves", "Undo history": "What Ctrl+Z would undo", "Recent changes": "What changed lately", "Shortcuts & tips": "Every keyboard shortcut", "Tutorial": "A quick tour of Pinefiles", "What's new": "Changes in this version",
+        "Customize": "Theme, behaviour, keys", "Theme editor": "Make your own colours", "Keyboard shortcuts": "Change any key", "Storage & index": "Sizes, rebuild index", "About & updates": "Version, install, update"}
 
 # the settings-style list on the left of the tools area: (group, [(label, A attribute, args)])
 TOOLS = [
@@ -30,9 +30,9 @@ TOOLS = [
                            ("Malware check", "open_malware"), ("Integrity check", "open_integrity"), ("System information", "open_system_info")]),
     ("Files & photos", [("Encrypted vault", "open_vault"), ("Sync two folders", "open_sync"), ("Checksum", "open_checksum"),
                         ("Convert images", "open_convert_images"), ("Photo details", "open_photo_info"),
-                        ("Look-alike photos", "open_similar_photos"), ("Smart collections", "open_collections"), ("Undo history", "open_undo_history"), ("Recent changes", "open_recent_changes"), ("Text from image / PDF", "open_ocr"), ("Compare panes", "open_compare")]),
+                        ("Look-alike photos", "open_similar_photos"), ("Photo timeline", "open_timeline"), ("Tag manager", "open_tags"), ("Cloud files", "open_cloud"),("Transfers", "open_transfers"), ("Automatic rules", "open_rules"), ("Smart collections", "open_collections"), ("Undo history", "open_undo_history"), ("Recent changes", "open_recent_changes"), ("Text from image / PDF", "open_ocr"), ("Compare panes", "open_compare")]),
     ("Connect & share", [("Nearby devices", "open_localsend"), ("FTP / SFTP / WebDAV", "open_ftp"), ("Phone notifications", "open_notify")]),
-    ("Foldwise", [("Customize", "open_settings"), ("Storage & index", "open_storage"), ("About & updates", "open_about"),
+    ("Pinefiles", [("Customize", "open_settings"), ("Theme editor", "open_themes"), ("Keyboard shortcuts", "open_keys"), ("Storage & index", "open_storage"), ("About & updates", "open_about"),
                     ("Mini-games", "open_games"), ("Shortcuts & tips", "open_shortcuts"), ("What's new", "open_whats_new"), ("Tutorial", "open_tutorial")]),
 ]
 

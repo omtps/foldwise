@@ -14,7 +14,7 @@ from ff_core import (DATE_FORMATS, DATE_STYLE, ACCENT_SWATCHES, DB_PATH, PALETTE
 
 
 def open_settings(A, _=None):
-    win = A.toplevel("Customize Foldwise", "760x640")
+    win = A.toplevel("Customize Pinefiles", "760x640")
     f = ttk.Frame(win, padding=20)
     f.pack(fill="both", expand=True)
     r = 0
@@ -115,13 +115,15 @@ def open_settings(A, _=None):
                       ("Real Windows file icons", "real_icons"),
                       ("Folders first when sorting", "folders_first"), ("Open details pane on startup", "details_open"),
                       ("Confirm before deleting", "confirm_delete"),
+                      ("Never open online-only files by itself (OneDrive, Phone Link photos): opening them downloads them", "skip_online_only"),
+                      ("Verify copies after copying (compares every file with its original; slower, safest)", "verify_copies"),
                       ("Offer a mini-game when a tool takes a while", "game_offer"),
                       ("Restore my tabs on startup", "restore_tabs"),
                       ("Index document contents (instant content: search)", "content_index"),
                       ("Warn me about low disk space and overdue backups", "health_alerts"),
                       ("Show a weekly PC health summary", "weekly_summary"),
                       ("Read scanned PDFs when indexing (OCR, restart to apply)", "ocr_pdfs"),
-                      ("Win+E opens Foldwise (restart to apply)", "win_e"),
+                      ("Win+E opens Pinefiles (restart to apply)", "win_e"),
                       ("Keep search index live (restart to apply)", "live_index")):
         v = tk.BooleanVar(value=A.cfg[key])
 
@@ -181,8 +183,8 @@ def open_settings(A, _=None):
     fm_btn = ttk.Button(f, text="")
     fm_btn.grid(row=r, column=2, sticky="e", padx=10)
     r += 1
-    ttk.Label(f, text="When another program or Windows opens a folder (for example \u201cShow in folder\u201d), Foldwise opens it instead of File Explorer. "
-              "Only your Windows account is changed, no administrator needed. Switching back restores what was there before, and Foldwise "
+    ttk.Label(f, text="When another program or Windows opens a folder (for example \u201cShow in folder\u201d), Pinefiles opens it instead of File Explorer. "
+              "Only your Windows account is changed, no administrator needed. Switching back restores what was there before, and Pinefiles "
               "switches back by itself if it is ever deleted.", style="DetKey.TLabel", background=T["bg"], wraplength=640).grid(row=r, column=0, columnspan=3, sticky="w")
     r += 1
 
@@ -193,16 +195,16 @@ def open_settings(A, _=None):
         except Exception:  # noqa - not Windows / registry unavailable
             st = "windows"
             fm_btn.state(["disabled"])
-        if st == "foldwise":
-            fm_state.set("Foldwise opens your folders.")
+        if st == "pinefiles":
+            fm_state.set("Pinefiles opens your folders.")
             fm_btn.configure(text="Go back to File Explorer", command=lambda: fm_switch(False), style="TButton")
         else:
-            fm_state.set("File Explorer opens your folders." if st == "windows" else "Foldwise was set, but its program is missing.")
-            fm_btn.configure(text="Make Foldwise my file manager", command=lambda: fm_switch(True), style="Accent.TButton")
+            fm_state.set("File Explorer opens your folders." if st == "windows" else "Pinefiles was set, but its program is missing.")
+            fm_btn.configure(text="Make Pinefiles my file manager", command=lambda: fm_switch(True), style="Accent.TButton")
 
     def fm_switch(on):
         import ff_core
-        ask = ("Make Foldwise open your folders instead of File Explorer?" + chr(10) * 2 + "You can switch back here at any time.") if on else "Go back to File Explorer for opening folders?"
+        ask = ("Make Pinefiles open your folders instead of File Explorer?" + chr(10) * 2 + "You can switch back here at any time.") if on else "Go back to File Explorer for opening folders?"
         if not messagebox.askyesno("Default file manager", ask, parent=win):
             return
         try:
@@ -223,7 +225,7 @@ def open_settings(A, _=None):
             messagebox.showerror("Hotkey", str(e), parent=win)
             return
         A.save_cfg(hotkey=hk.get().strip().lower())
-        messagebox.showinfo("Hotkey", "Saved. Quit Foldwise from the tray icon and relaunch to apply.", parent=win)
+        messagebox.showinfo("Hotkey", "Saved. Quit Pinefiles from the tray icon and relaunch to apply.", parent=win)
 
     ttk.Button(f, text="Set", command=set_hk).grid(row=r, column=2, sticky="w", padx=10)
     r += 1
