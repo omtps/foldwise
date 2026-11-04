@@ -36,6 +36,34 @@ TOOLS = [
                     ("Mini-games", "open_games"), ("Shortcuts & tips", "open_shortcuts"), ("What's new", "open_whats_new"), ("Tutorial", "open_tutorial")]),
 ]
 
+# What the list on the left and the overview show: related tools share ONE entry and open as tabs inside it (name, [tools in TOOLS]).
+HUBS = [
+    ("Clean up & organize", [("Clean up", ["Smart disk cleaner", "Duplicate files", "Largest files", "Look-alike photos", "Recycle Bin"]),
+                             ("Disk usage", ["Disk usage map", "Storage by file type", "Folder size history"]),
+                             ("Organize", ["Organize folder", "Automatic rules"])]),
+    ("Health & security", [("Health & security", ["PC health", "Malware check", "System information"]), ("Backups", ["Backups"]),
+                           ("Verify files", ["Checksum", "Integrity check"])]),
+    ("Files & photos", [("Images & photos", ["Convert images", "Photo details", "Photo timeline", "Text from image / PDF"]),
+                        ("Tags & collections", ["Tag manager", "Smart collections"]), ("Sync & compare", ["Sync two folders", "Compare panes"]),
+                        ("Activity", ["Transfers", "Undo history", "Recent changes"]), ("Encrypted vault", ["Encrypted vault"])]),
+    ("Connect & share", [("Connect", ["Nearby devices", "FTP / SFTP / WebDAV", "Cloud files", "Phone notifications"])]),
+    ("Pinefiles", [("Customize", ["Customize", "Theme editor", "Keyboard shortcuts"]),
+                   ("Help & about", ["About & updates", "Storage & index", "What's new", "Shortcuts & tips", "Mini-games"]), ("Tutorial", ["Tutorial"])]),
+]
+_BY_NAME = {it[0]: it for _g, items in TOOLS for it in items}
+SUBS = {name: subs for _g, hubs in HUBS for name, subs in hubs}
+NAV = []  # same shape as TOOLS: (group, [(label, A attribute, args)]); a hub of several tools opens through open_hub
+for _g, _hubs in HUBS:
+    _items = []
+    for _n, _subs in _hubs:
+        if len(_subs) == 1:
+            _t = _BY_NAME[_subs[0]]
+            _items.append((_n, _t[1], _t[2] if len(_t) > 2 else ()))
+        else:
+            _items.append((_n, "open_hub", (_n,)))
+            DESC[_n] = ", ".join(x.lower() if i else x for i, x in enumerate(_subs))
+    NAV.append((_g, _items))
+
 
 class Page(tk.Frame):
     def __init__(self, A, parent, title):
@@ -295,7 +323,7 @@ def _build_nav(A):
 
     if not want:
         row(None, lambda: open_tools(A), 12, True)
-    for group, items in TOOLS:
+    for group, items in NAV:
         shown = [it for it in items if not want or want in it[0].lower() or want in DESC.get(it[0], "").lower()]
         if not shown:
             continue
@@ -326,7 +354,7 @@ def _pin(A, names):
 
 
 def _visible_tools():
-    return [it for _, items in TOOLS for it in items if it[0] in _S["rows"]]
+    return [it for _, items in NAV for it in items if it[0] in _S["rows"]]
 
 
 def _kbd_move(A, d):
@@ -374,13 +402,21 @@ def _hilite():
 def _open(A, label, attr, args):
     _S["pending"] = label
     A.save_cfg(recent_tools=([label] + [x for x in A.cfg.get("recent_tools", []) if x != label])[:5])
-    getattr(A, attr)(*args)
+    if attr == "open_hub":
+        open_hub(A, *args)
+    else:
+        getattr(A, attr)(*args)
 
 
 def _match(title):
+    """The list entry a page belongs to: its own name, or the hub holding the tool of that name."""
     t = (title or "").lower()
-    for it in [i for _, items in TOOLS for i in items]:
-        if it[0].lower() == t or it[0].lower() in t or (len(t) > 4 and t in it[0].lower()):
+    for it in [i for _, items in NAV for i in items]:
+        subs = SUBS.get(it[0], ())
+        if it[0].lower() == t or any(x.lower() == t for x in subs):
+            return it[0]
+    for it in [i for _, items in NAV for i in items]:
+        if it[0].lower() in t or (len(t) > 4 and t in it[0].lower()):
             return it[0]
     return None
 
@@ -388,6 +424,10 @@ def _match(title):
 # ------------------------------------------------------------------ opening, showing, leaving
 def new_page(A, title):
     """Open a tool. There is ONE Tools tab: a new tool takes its place, unless that tool is still busy (then it keeps its own tab)."""
+    if _S.get("embed") is not None:  # a tool opened inside a hub: it fills the hub's body instead of taking a tab
+        p = Page(A, _S["embed"], title)
+        p.pack(fill="both", expand=True)
+        return p
     _host(A)
     old = [q for q in _S["pages"] if not q.busy()]
     p = Page(A, _S["cv"], title)
@@ -396,6 +436,58 @@ def new_page(A, title):
     show_page(A, p)
     for q in old:  # the old tool goes only after the new one is on screen: no flash of the file view in between
         q.destroy()
+    return p
+
+
+def open_hub(A, name):
+    """One list entry that holds several related tools: a row of tabs on top, the chosen tool below. A tool is built when first picked and
+    kept (a running scan carries on while you look at a sibling)."""
+    subs = SUBS[name]
+    p = new_page(A, name)
+    fs = A.cfg["font_size"]
+    bar = tk.Frame(p, bg=T["bg"])
+    bar.pack(fill="x", padx=22, pady=(14, 0))
+    body = tk.Frame(p, bg=T["bg"])
+    body.pack(fill="both", expand=True)
+    tabs, built = {}, {}
+    cur = {"name": None}
+
+    def pick(sub):
+        old = built.get(cur["name"])
+        if old is not None and old.winfo_exists():
+            old.pack_forget()
+        cur["name"] = sub
+        for n, b in tabs.items():
+            b.configure(fg=T["fg"] if n == sub else T["muted"], font=("Segoe UI", fs, "bold" if n == sub else "normal"))
+            b._under.configure(bg=T["accent"] if n == sub else T["bg"])
+        pg = built.get(sub)
+        if pg is not None and pg.winfo_exists():
+            pg.pack(fill="both", expand=True)
+            return
+        tool = _BY_NAME[sub]
+        _S["embed"] = body
+        try:
+            getattr(A, tool[1])(*(tool[2] if len(tool) > 2 else ()))
+        finally:
+            _S["embed"] = None
+        kids = [c for c in body.winfo_children() if isinstance(c, Page)]
+        built[sub] = kids[-1] if kids else None
+
+    for sub in subs:
+        cell = tk.Frame(bar, bg=T["bg"])
+        cell.pack(side="left", padx=(0, 18))
+        b = tk.Label(cell, text=sub, bg=T["bg"], fg=T["muted"], font=("Segoe UI", fs), cursor="hand2", pady=4)
+        b.pack()
+        b._under = tk.Frame(cell, height=2, bg=T["bg"])
+        b._under.pack(fill="x")
+        b.bind("<Button-1>", lambda e, s_=sub: pick(s_))
+        tabs[sub] = b
+    def esc(e):  # Esc goes to the tool that is showing
+        pg = built.get(cur["name"])
+        if pg is not None and pg._esc:
+            pg._esc(e)
+    p._esc = esc
+    pick(subs[0])
     return p
 
 
@@ -428,15 +520,15 @@ def open_tools(A, _=None):
             stats.columnconfigure(i, weight=1, uniform="stat")
     except Exception:  # noqa - the overview works without its status row
         pass
-    every = {it[0]: it for _g, items in TOOLS for it in items}
-    groups = ([("Recently used", [every[n] for n in A.cfg.get("recent_tools", []) if n in every])] if A.cfg.get("recent_tools") else []) + TOOLS
+    every = {it[0]: it for _g, items in NAV for it in items}
+    groups = ([("Recently used", [every[n] for n in A.cfg.get("recent_tools", []) if n in every])] if any(n in every for n in A.cfg.get("recent_tools", [])) else []) + NAV
     for group, items in groups:
-        tk.Label(p, text=group.upper(), bg=T["bg"], fg=T["muted"], font=("Segoe UI", fs - 2, "bold")).pack(anchor="w", padx=28, pady=(16, 4))
+        tk.Label(p, text=group.upper(), bg=T["bg"], fg=T["muted"], font=("Segoe UI", fs - 2, "bold")).pack(anchor="w", padx=28, pady=(10, 2))
         row = tk.Frame(p, bg=T["bg"])
         row.pack(fill="x", padx=22)
         for i, it in enumerate(items):
-            card = tk.Frame(row, bg=T["panel"], cursor="hand2", padx=12, pady=8, width=210, height=64)
-            card.grid(row=i // 4, column=i % 4, padx=6, pady=5, sticky="nsew")
+            card = tk.Frame(row, bg=T["panel"], cursor="hand2", padx=12, pady=6, width=210, height=58)
+            card.grid(row=i // 4, column=i % 4, padx=6, pady=3, sticky="nsew")
             card.grid_propagate(False)
             parts = [tk.Label(card, text=it[0], bg=T["panel"], fg=T["fg"], font=("Segoe UI", fs, "bold"), anchor="w", cursor="hand2"),
                      tk.Label(card, text=DESC.get(it[0], ""), bg=T["panel"], fg=T["muted"], font=("Segoe UI", fs - 2), anchor="w",
