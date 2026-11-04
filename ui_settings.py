@@ -56,6 +56,7 @@ def open_settings(A, _=None):
         row_height={"Compact": 24, "Normal": 30, "Comfortable": 38}[rh.get()]))
     r += 1
 
+    label("LOOK IN DETAIL")
     ttk.Label(f, text="Interface font").grid(row=r, column=0, sticky="w", pady=4)
     fcb = ttk.Combobox(f, values=["Segoe UI", "Segoe UI Variable", "Calibri", "Cantarell", "Arial", "Verdana", "Tahoma", "Consolas"], width=18)
     fcb.set(A.cfg.get("ui_font", "Segoe UI"))
@@ -110,40 +111,42 @@ def open_settings(A, _=None):
         row=r, column=0, columnspan=3, sticky="w", pady=2)
     r += 1
 
-    label("BEHAVIOUR")
-    for text, key in (("Show hidden files", "show_hidden"), ("Calculate folder sizes", "folder_sizes"),
-                      ("Real Windows file icons", "real_icons"),
-                      ("Folders first when sorting", "folders_first"), ("Open details pane on startup", "details_open"),
-                      ("Confirm before deleting", "confirm_delete"),
-                      ("Never open online-only files by itself (OneDrive, Phone Link photos): opening them downloads them", "skip_online_only"),
-                      ("Verify copies after copying (compares every file with its original; slower, safest)", "verify_copies"),
-                      ("Offer a mini-game when a tool takes a while", "game_offer"),
-                      ("Restore my tabs on startup", "restore_tabs"),
-                      ("Index document contents (instant content: search)", "content_index"),
-                      ("Warn me about low disk space and overdue backups", "health_alerts"),
-                      ("Show a weekly PC health summary", "weekly_summary"),
-                      ("Read scanned PDFs when indexing (OCR, restart to apply)", "ocr_pdfs"),
-                      ("Win+E opens Pinefiles (restart to apply)", "win_e"),
-                      ("Keep search index live (restart to apply)", "live_index")):
-        v = tk.BooleanVar(value=A.cfg[key])
+    groups = (("FILES", (("Show hidden files", "show_hidden"), ("Calculate folder sizes", "folder_sizes"),
+                         ("Real Windows file icons", "real_icons"), ("Folders first when sorting", "folders_first"),
+                         ("Open details pane on startup", "details_open"), ("Restore my tabs on startup", "restore_tabs"))),
+              ("SAFETY", (("Confirm before deleting", "confirm_delete"),
+                          ("Never open online-only files by itself (OneDrive, Phone Link photos): opening them downloads them", "skip_online_only"),
+                          ("Verify copies after copying (compares every file with its original; slower, safest)", "verify_copies"))),
+              ("SEARCH & BACKGROUND", (("Index document contents (instant content: search)", "content_index"),
+                                       ("Read scanned PDFs when indexing (OCR, restart to apply)", "ocr_pdfs"),
+                                       ("Keep search index live (restart to apply)", "live_index"),
+                                       ("Win+E opens Pinefiles (restart to apply)", "win_e"))),
+              ("ALERTS & EXTRAS", (("Warn me about low disk space and overdue backups", "health_alerts"),
+                                   ("Show a weekly PC health summary", "weekly_summary"),
+                                   ("Offer a mini-game when a tool takes a while", "game_offer"))))
+    for head_, items_ in groups:
+        label(head_)
+        for text, key in items_:
+            v = tk.BooleanVar(value=A.cfg[key])
 
-        def chg(key=key, v=v):
-            A.save_cfg(**{key: v.get()})
-            if key == "details_open":
-                A.toggle_details(value=v.get())
-            elif key == "real_icons":
-                A.setup_icons()
-                A.refresh()
-            elif key == "content_index":
-                A.start_content_index() if v.get() else None
-            else:
-                A.hidden_var.set(A.cfg["show_hidden"])
-                A.fsz_var.set(A.cfg["folder_sizes"])
-                A.ff_var.set(A.cfg["folders_first"])
-                A.refresh()
+            def chg(key=key, v=v):
+                A.save_cfg(**{key: v.get()})
+                if key == "details_open":
+                    A.toggle_details(value=v.get())
+                elif key == "real_icons":
+                    A.setup_icons()
+                    A.refresh()
+                elif key == "content_index":
+                    A.start_content_index() if v.get() else None
+                else:
+                    A.hidden_var.set(A.cfg["show_hidden"])
+                    A.fsz_var.set(A.cfg["folder_sizes"])
+                    A.ff_var.set(A.cfg["folders_first"])
+                    A.refresh()
 
-        ttk.Checkbutton(f, text=text, variable=v, command=chg).grid(row=r, column=0, columnspan=3, sticky="w", pady=2)
-        r += 1
+            ttk.Checkbutton(f, text=text, variable=v, command=chg).grid(row=r, column=0, columnspan=3, sticky="w", pady=2)
+            r += 1
+    label("STARTUP")
     ttk.Label(f, text="Start in").grid(row=r, column=0, sticky="w", pady=(8, 2))
     sv = tk.StringVar(value=A.cfg["start"])
     fr = tk.Frame(f, bg=T["bg"])
@@ -244,7 +247,7 @@ def _add_filter(win, f, last_row):
     q = tk.StringVar()
     e = ttk.Entry(win, textvariable=q)
     e.pack(fill="x", padx=20, pady=(16, 0), before=f)
-    ttk.Label(win, text="Type to find a setting, e.g. font, date, hotkey", style="DetKey.TLabel", background=T["bg"]).pack(
+    ttk.Label(win, text="Click a heading to open or fold it. Type to find a setting, e.g. font, date, hotkey", style="DetKey.TLabel", background=T["bg"]).pack(
         anchor="w", padx=22, before=f)
 
     def row_text(widgets):
@@ -260,6 +263,9 @@ def _add_filter(win, f, last_row):
     for w in f.grid_slaves():
         rows.setdefault(int(w.grid_info()["row"]), []).append(w)
 
+    closed = set()  # headings (row numbers) folded away; a search shows every matching row whatever is folded
+    heads = {}
+
     def apply(*_):
         want = q.get().strip().lower()
         section = None
@@ -272,8 +278,15 @@ def _add_filter(win, f, last_row):
             elif section is not None:
                 section[1].append(rn)
         for head, items in groups:
-            head_hit = want in row_text(rows[head])
-            shown = [rn for rn in items if rn != last_row and (not want or head_hit or want in row_text(rows[rn]))]
+            lab = [w for w in rows[head] if isinstance(w, ttk.Label)][0]
+            title = heads.setdefault(head, str(lab.cget("text")).lstrip("▸▾ ").strip())
+            if lab.bind("<Button-1>") == "":
+                lab.configure(cursor="hand2")
+                lab.bind("<Button-1>", lambda ev, h=head: (closed.symmetric_difference_update({h}), apply()))
+            lab.configure(text=("▸  " if head in closed and not want else "▾  ") + title)
+            head_hit = want in title.lower()
+            folded = head in closed and not want
+            shown = [rn for rn in items if rn != last_row and not folded and (not want or head_hit or want in row_text(rows[rn]))]
             for rn in items:
                 for w in rows[rn]:
                     if rn == last_row or rn in shown:
@@ -285,7 +298,12 @@ def _add_filter(win, f, last_row):
                     w.grid()
                 else:
                     w.grid_remove()
+    for rn in sorted(rows):  # everything but the first section starts folded: the window opens as a short list of headings
+        if any(isinstance(w, ttk.Label) and str(w.cget("style")) == "DetHead.TLabel" for w in rows[rn]) and rn != min(
+                x for x in rows if any(isinstance(w, ttk.Label) and str(w.cget("style")) == "DetHead.TLabel" for w in rows[x])):
+            closed.add(rn)
     q.trace_add("write", apply)
+    apply()
     e.bind("<Escape>", lambda ev: (q.set(""), "break")[1] if q.get() else None)
 
 

@@ -3,6 +3,7 @@
 ## 1.1.001 - 2026-11-04
 - Mini-games no longer float over the tool: a slow tool offers them once in a pop-up and they open in the Mini-games tab
 - New game: the Chrome-style dino runner
+- Customize is much shorter: sections fold (only the first is open), the options are grouped (Look in detail, Files, Safety, Search & background, Alerts & extras, Startup) and the search box still finds everything
 
 ## 1.1 - 2026-11-04
 - Pinefiles is the new name of Foldwise: your settings, index, tags, notes and shortcuts carry over by themselves
