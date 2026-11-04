@@ -1,5 +1,9 @@
 # Pinefiles changelog
 
+## 1.1.001 - 2026-11-04
+- Mini-games no longer float over the tool: a slow tool offers them once in a pop-up and they open in the Mini-games tab
+- New game: the Chrome-style dino runner
+
 ## 1.1 - 2026-11-04
 - Pinefiles is the new name of Foldwise: your settings, index, tags, notes and shortcuts carry over by themselves
 - New tools: Tag manager, Photo timeline, Cloud files, Theme editor and a Keyboard shortcuts editor

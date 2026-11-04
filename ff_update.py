@@ -17,10 +17,11 @@ import time
 import urllib.request
 from pathlib import Path
 
-APP_VERSION = "1.1"
+APP_VERSION = "1.1.001"
 
 # newest first; shown in Tools > Pinefiles > What's new and as a toast after an update (keep CHANGELOG.md in step)
 WHATS_NEW = [
+    ('1.1.001', ['Mini-games no longer float over the tool: a slow tool offers them once in a pop-up and they open in the Mini-games tab', 'New game: the Chrome-style dino runner']),
     ('1.1', ['Pinefiles is the new name of Foldwise: your settings, index, tags, notes and shortcuts carry over by themselves', 'New tools: Tag manager, Photo timeline, Cloud files, Theme editor and a Keyboard shortcuts editor', 'Notes on files and folders (search them with note:), every folder remembers its own sort and view, alerts when a saved search finds new files', 'Never opens online-only files (Phone Link photos, OneDrive) by itself, so they are not downloaded; switch in Customize']),
     ('1.0.2-1', ["Nearby devices: the question 'X wants to send you files' now always shows on screen (it opened off-screen when Pinefiles was minimised) and a pop-up points at it", "Nearby devices works with the real LocalSend apps: Pinefiles now presents the certificate they require, and the new 'Check my network' button explains Public networks and firewall blocks", 'Receiving files switches itself off after 20 minutes (never in the middle of a transfer) and no longer starts by itself at launch', 'The Nearby devices page fits narrow windows: the Send button no longer hides to the right']),
     ('1.0.2', ['Nearby devices: send files to and receive from phones and PCs running the free LocalSend app (or another Pinefiles) on your network; right-click files > Send to a nearby device; receiving is off until you turn it on and always asks first', "Faster copying: Pinefiles uses Windows' own copy routine and copies many small files at once (measured here: 4000 small files 3.5x faster, a 1 GB file about 4x faster before the drive itself is the limit)", 'Moving files to another drive now shows progress, can be cancelled and removes the original only after everything arrived', 'Tutorial button in Nearby devices']),

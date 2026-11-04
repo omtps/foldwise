@@ -1,9 +1,8 @@
 """Mini-games for the waiting time.
 
-A small chip sits in the corner of the Tools area at all times (it says so louder while a tool is busy); click it to play. The games run on the
-Tk timer only (the scans work in their own threads), so playing never slows or interrupts a scan. The panel floats over the corner, can
-be minimised, and when the tool finishes it says so without taking your game away.
-The game rules are plain classes (Catcher, Stack, Match) so the tests can play them without a window.
+Tools > Mini-games opens them in a tab, and a tool that stays busy for a few seconds offers them once in a pop-up (nothing floats over the
+tool). The games run on the Tk timer only (the scans work in their own threads), so playing never slows or interrupts a scan.
+The game rules are plain classes (Catcher, Stack, Match, Runner) so the tests can play them without a window.
 """
 import random
 import time
@@ -185,7 +184,62 @@ class Match:
             self.flip(i)
 
 
-GAMES = [Catcher, Stack, Match]
+class Runner:
+    """A little dinosaur runs along; jump over the cacti. It gets faster the further you get."""
+    name = "Dino"
+    hint = "Click, Space or ↑ to jump over the cacti. The longer you run, the faster it gets."
+    higher_is_better = True
+    GROUND, DX, DW, DH = H - 36, 56, 26, 30  # ground line, dino left edge, dino size
+
+    def __init__(self, rng=None):
+        self.rng = rng or random.Random()
+        self.reset()
+
+    def reset(self):
+        self.y, self.vy = 0.0, 0.0  # height above the ground
+        self.cacti, self.dist, self.over = [], 0.0, False
+        self._next = 260.0  # distance at which the next cactus appears
+
+    @property
+    def score(self):
+        return int(self.dist / 10)
+
+    @property
+    def speed(self):
+        return min(13.0, 5.0 + self.dist / 1500)
+
+    def jump(self):
+        if self.over:
+            self.reset()
+        elif self.y == 0:
+            self.vy = 11.5
+
+    def step(self, dt=1.0):
+        if self.over:
+            return
+        self.dist += self.speed * dt
+        if self.y > 0 or self.vy > 0:
+            self.vy -= 0.75 * dt
+            self.y = max(0.0, self.y + self.vy * dt)
+            if self.y == 0:
+                self.vy = 0.0
+        if self.dist >= self._next:
+            n = self.rng.choice((1, 1, 2, 3))
+            self.cacti.append([W + 10.0, 12 * n + 4, self.rng.choice((26, 32, 38))])  # x, width, height
+            self._next = self.dist + self.speed * self.rng.uniform(38, 60)  # always enough room to land and jump again
+        for c in self.cacti:
+            c[0] -= self.speed * dt
+        self.cacti = [c for c in self.cacti if c[0] + c[1] > -10]
+        box = (self.DX + 4, self.DX + self.DW - 4, self.y + 2)  # left, right, feet (a forgiving hit box)
+        for x, w, h in self.cacti:
+            if x + 3 < box[1] and x + w - 3 > box[0] and box[2] < h - 3:
+                self.over = True
+
+    def click(self, x, y):
+        self.jump()
+
+
+GAMES = [Catcher, Stack, Match, Runner]
 
 
 # ------------------------------------------------------------------------------------------------ drawing
@@ -236,6 +290,23 @@ def draw(cv, g, mode="play"):
             y = H - (n + 1) * g.BH + shift
             cv.create_rectangle(g.pos, y, g.pos + g.w, y + g.BH - 2, fill=T["accent"], outline="")
         cv.create_text(10, 8, anchor="nw", fill=T["fg"], font=("Segoe UI", 12, "bold"), text=f"{g.score}")
+    elif isinstance(g, Runner):
+        gy = g.GROUND
+        cv.create_line(0, gy + 1, W, gy + 1, fill=T["muted"])
+        for k in range(6):  # ground specks that scroll with the run
+            cv.create_line((k * 97 - g.dist) % W, gy + 8, (k * 97 - g.dist) % W + 6, gy + 8, fill=T["line"])
+        for x, w, h in g.cacti:
+            cv.create_rectangle(x, gy - h, x + w, gy, fill=GOOD, outline="")
+            cv.create_rectangle(x - 4, gy - h * 0.65, x + 2, gy - h * 0.65 + 5, fill=GOOD, outline="")
+        x0, y1 = g.DX, gy - g.y
+        step = int(g.dist / 12) % 2 if g.y == 0 else 0
+        cv.create_rectangle(x0, y1 - 22, x0 + 18, y1 - 6, fill=T["fg"], outline="")  # body
+        cv.create_rectangle(x0 + 10, y1 - g.DH, x0 + g.DW, y1 - 18, fill=T["fg"], outline="")  # head
+        cv.create_rectangle(x0 + 19, y1 - g.DH + 4, x0 + 23, y1 - g.DH + 8, fill=T["bg"], outline="")  # eye
+        cv.create_rectangle(x0 - 6, y1 - 20, x0, y1 - 14, fill=T["fg"], outline="")  # tail
+        cv.create_rectangle(x0 + 3, y1 - 6, x0 + 8, y1 - (0 if step else 3), fill=T["fg"], outline="")  # legs
+        cv.create_rectangle(x0 + 11, y1 - 6, x0 + 16, y1 - (3 if step else 0), fill=T["fg"], outline="")
+        cv.create_text(W - 10, 8, anchor="ne", fill=T["fg"], font=("Segoe UI", 12, "bold"), text=f"{g.score}")
     else:
         for i in range(12):
             x0, y0, x1, y1 = g.cell_rect(i)
@@ -258,13 +329,11 @@ def draw(cv, g, mode="play"):
 
 # ------------------------------------------------------------------------------------------------ the panel
 class GamePanel(tk.Frame):
-    """A small floating game window. A game starts on the first click, pauses when the pointer leaves it or the panel was hidden, can be
-    dragged by its title bar and keeps its state while you move between tools."""
+    """The game panel. A game starts on the first click and pauses when the pointer leaves it or the panel was hidden."""
 
-    def __init__(self, parent, A, on_minimize=None, on_close=None, floating=True):
+    def __init__(self, parent, A):
         super().__init__(parent, bg=T["raised"], highlightthickness=1, highlightbackground=T["line"])
         self.A = A
-        self.floating = floating
         self.games = {cls.name: cls() for cls in GAMES}
         self.game = self.games["Catch"]
         self.started = {n: False for n in self.games}
@@ -272,7 +341,7 @@ class GamePanel(tk.Frame):
         self._scored = {}
         self._was_hidden = False
         self._resolve_job = None
-        self.head = head = tk.Frame(self, bg=T["raised"], cursor="fleur" if floating else "")
+        self.head = head = tk.Frame(self, bg=T["raised"])
         head.pack(fill="x", padx=8, pady=(6, 2))
         self.tabs = {}
         for name in self.games:
@@ -282,18 +351,6 @@ class GamePanel(tk.Frame):
             self.tabs[name] = b
         self.info = tk.Label(head, bg=T["raised"], fg=T["muted"], font=("Segoe UI", 9))
         self.info.pack(side="left", padx=10)
-        if on_close:
-            x = tk.Label(head, text="✕", bg=T["raised"], fg=T["muted"], cursor="hand2", padx=6)
-            x.pack(side="right")
-            x.bind("<Button-1>", lambda e: on_close())
-        if on_minimize:
-            m = tk.Label(head, text="–", bg=T["raised"], fg=T["muted"], cursor="hand2", padx=6)
-            m.pack(side="right")
-            m.bind("<Button-1>", lambda e: on_minimize())
-        if floating:  # drag the panel by its title bar so it never has to cover what you need
-            for w in (head, self.info):
-                w.bind("<ButtonPress-1>", self._drag_start)
-                w.bind("<B1-Motion>", self._drag_move)
         self.note = tk.Label(self, bg=T["raised"], fg=T["muted"], font=("Segoe UI", 9), anchor="w", wraplength=W)
         self.note.pack(fill="x", padx=10)
         self.cv = tk.Canvas(self, width=W, height=H, bg=T["bg"], highlightthickness=0, cursor="hand2")
@@ -307,20 +364,11 @@ class GamePanel(tk.Frame):
         for k, d in (("<Left>", -1), ("<Right>", 1), ("a", -1), ("d", 1)):
             self.cv.bind(k, lambda e, d=d: self._key(d))
         self.cv.bind("<space>", lambda e: self._click(e))
+        self.cv.bind("<Up>", lambda e: self._click(e))
         self._last = time.time()
         self._job = None
         self.pick("Catch")
         self._tick()
-
-    # ---- dragging
-    def _drag_start(self, e):
-        self._drag = (e.x_root - self.winfo_x(), e.y_root - self.winfo_y())
-
-    def _drag_move(self, e):
-        host = self.master
-        nx = max(0, min(host.winfo_width() - self.winfo_width(), e.x_root - self._drag[0]))
-        ny = max(0, min(host.winfo_height() - self.winfo_height(), e.y_root - self._drag[1]))
-        self.place(relx=0, rely=0, anchor="nw", x=nx, y=ny)
 
     # ---- games
     def best(self, name):
@@ -334,9 +382,6 @@ class GamePanel(tk.Frame):
         if isinstance(self.game, Match):
             self.started[name] = True  # no clock to wait for
         self._update_info()
-
-    def reset_note(self):
-        self.note.configure(text=self.game.hint, fg=T["muted"])
 
     def _update_info(self):
         b = self.best(self.game.name)
@@ -421,9 +466,6 @@ class GamePanel(tk.Frame):
             self._was_hidden = True
         self._job = self.after(33 if mapped else 300, self._tick)
 
-    def tool_finished(self):
-        self.note.configure(text="✔ The tool has finished. Close the game (✕) to see its results; nothing was interrupted.", fg=GOOD)
-
     def destroy(self):
         for j in (self._job, self._resolve_job):
             if j is not None:
@@ -434,85 +476,30 @@ class GamePanel(tk.Frame):
         super().destroy()
 
 
-# ------------------------------------------------------------------------------------------------ the chip that offers it in every tool
-_G = {"chip": None, "panel": None, "page": None, "chip_label": None}
-CORNER = dict(relx=1, rely=0, anchor="ne", x=-18, y=12)  # top right: the Close / Back buttons of the tools are at the bottom
-
-
-def hide():
-    """Remove the chip and the game (the setting 'Offer a mini-game' was turned off)."""
-    for k in ("chip", "panel"):
-        _drop(k)
-    _G["page"] = None
-
-
-def _drop(k):
-    w = _G[k]
-    if w is not None:
-        try:
-            w.destroy()
-        except tk.TclError:
-            pass
-    _G[k] = None
-
-
-def _chip(A, host, st):
-    fr = tk.Frame(host, bg=T["accent"], cursor="hand2")
-    lab = tk.Label(fr, text="▶  Play a quick game", bg=T["accent"], fg="#ffffff", font=("Segoe UI", 10, "bold"), padx=14, pady=6)
-    lab.pack(side="left")
-    lab.bind("<Button-1>", lambda e: _open_panel(A, host, st))
-    fr.bind("<Button-1>", lambda e: _open_panel(A, host, st))
-    fr.place(**CORNER)
-    fr.lift()
-    _G["chip"], _G["chip_label"] = fr, lab
-
-
-def _open_panel(A, host, st):
-    _drop("chip")
-    if _G["panel"] is None or not _G["panel"].winfo_exists():
-        p = GamePanel(host, A, on_minimize=lambda: (_drop("panel"), _chip(A, host, st)),
-                      on_close=lambda: (_drop("panel"), _chip(A, host, st)))
-        p.place(**CORNER)
-        _G["panel"] = p
-    _G["panel"].lift()
+# ------------------------------------------------------------------------------------------------ the offer for a slow tool
+OFFER_AFTER = 3.0  # seconds a tool has to be busy before the games are offered
 
 
 def watch(A, host, page, slow_now):
-    """Called every 400 ms for the visible tool: the games are always one click away in the corner (the chip says so louder while the
-    tool is busy), and a game in progress is told when the tool finishes. A game is never taken away, not even when you open another tool."""
-    if page is None or host is None or not A.cfg.get("game_offer", True):
-        if _G["chip"] is not None or _G["panel"] is not None:
-            hide()
+    """Called every 400 ms for the visible tool. When it has been busy for a few seconds a toast offers the games once (nothing floats over
+    the tool, so no button is ever covered); the button opens Tools > Mini-games, and the busy tool keeps its own tab."""
+    if page is None or not A.cfg.get("game_offer", True):
         return
-    if _G["panel"] is not None and not _G["panel"].winfo_exists():
-        _G["panel"] = None
-    if _G["chip"] is not None and not _G["chip"].winfo_exists():
-        _G["chip"] = None
-    st = page.__dict__.setdefault("_game", {"since": None})
-    if _G["page"] is not page:  # another tool: the old 'finished' note no longer applies
-        _G["page"] = page
-        if _G["panel"] is not None:
-            _G["panel"].reset_note()
-    if _G["chip"] is None and _G["panel"] is None:
-        _chip(A, host, st)
-    lab = _G.get("chip_label")
-    if lab is not None and _G["chip"] is not None:
-        try:
-            lab.configure(text="This is taking a while   ▶  Play a quick game" if slow_now else "▶  Play a quick game")
-        except tk.TclError:
-            pass
-    if slow_now:
-        st["since"] = st["since"] or time.time()
-    elif st["since"] is not None:  # the tool just finished
-        st["since"] = None
-        if _G["panel"] is not None:
-            _G["panel"].tool_finished()
+    st = page.__dict__.setdefault("_game", {"since": None, "offered": False})
+    if not slow_now:
+        st.update(since=None, offered=False)
+        return
+    st["since"] = st["since"] or time.time()
+    if not st["offered"] and time.time() - st["since"] >= OFFER_AFTER:
+        st["offered"] = True
+        A.show_toast("This is taking a while. Want to play a quick game while you wait? The tool keeps working in its own tab.",
+                     "Play a quick game", A.open_games, title="Mini-games")
 
 
 def open_games(A):
     """Tools > Mini-games: the same games, any time."""
     win = A.toplevel("Mini-games", "700x520")
     tk.Label(win, text="Mini-games", bg=T["bg"], fg=T["fg"], font=("Segoe UI", A.cfg["font_size"] + 6, "bold")).pack(anchor="w", padx=22, pady=(18, 2))
-    tk.Label(win, text="They also pop up (as a small chip in the corner) when a tool takes more than a few seconds. Turn that off in Customize.",
+    tk.Label(win, text="A tool that takes more than a few seconds offers them in a small pop-up. Turn that off in Customize.",
              bg=T["bg"], fg=T["muted"], font=("Segoe UI", A.cfg["font_size"]), wraplength=620, justify="left").pack(anchor="w", padx=22, pady=(0, 12))
-    GamePanel(win, A, floating=False).pack(anchor="w", padx=22)
+    GamePanel(win, A).pack(anchor="w", padx=22)
