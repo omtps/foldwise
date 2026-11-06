@@ -436,7 +436,7 @@ try { $o.Admins = @(Get-LocalGroupMember -Group Administrators -ErrorAction Stop
 try { $s = Get-MpComputerStatus -ErrorAction Stop; $o.QuickScanAge = $s.QuickScanAge; $o.FullScanAge = $s.FullScanAge; $o.Tamper = $s.IsTamperProtected } catch { }
 try { $o.Threats = @(Get-MpThreatDetection -ErrorAction Stop | Where-Object { $_.InitialDetectionTime -gt (Get-Date).AddDays(-30) } | ForEach-Object { [string]$_.ThreatID + ' ' + $_.InitialDetectionTime.ToString('yyyy-MM-dd') }) } catch { $o.Threats = $null }
 try { $o.Listen = @(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object { $_.LocalAddress -in '0.0.0.0','::' } | ForEach-Object { $p = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName; "$($_.LocalPort) $p" } | Sort-Object -Unique) } catch { $o.Listen = $null }
-try { $o.Hosts = @(Get-Content "$env:SystemRoot\System32\drivers\etc\hosts" -ErrorAction Stop | Where-Object { $_ -and $_ -notmatch '^\s*#' -and $_ -notmatch '^\s*$' }) } catch { $o.Hosts = $null }
+try { $o.Hosts = @(Get-Content "$env:SystemRoot\System32\drivers\etc\hosts" -ErrorAction Stop | Where-Object { $_ -and $_ -notmatch '^\s*#' -and $_ -notmatch '^\s*$' } | ForEach-Object { [string]$_ }) } catch { $o.Hosts = $null }
 try { $o.Tasks = @(Get-ScheduledTask -ErrorAction Stop | Where-Object { $_.TaskPath -notlike '\Microsoft*' -and $_.State -ne 'Disabled' } | ForEach-Object { $_.TaskName }) } catch { $o.Tasks = $null }
 [pscustomobject]$o
 
@@ -513,7 +513,7 @@ def security_findings(r):
         add("good", "No threats detected in the last 30 days", "")
     hosts = _as_list(r.get("Hosts"))
     if hosts:
-        add("warn", f"The hosts file redirects {len(hosts)} address(es)", "; ".join(h.strip() for h in hosts[:4]) + ". Malware often edits this file. Remove entries you don't recognise.")
+        add("warn", f"The hosts file redirects {len(hosts)} address(es)", "; ".join((h.get("value", "") if isinstance(h, dict) else str(h)).strip() for h in hosts[:4]) + ". Malware often edits this file. Remove entries you don't recognise.")
     elif r.get("Hosts") is not None:
         add("good", "The hosts file is clean", "No website redirections are set.")
     ports = _as_list(r.get("Listen"))

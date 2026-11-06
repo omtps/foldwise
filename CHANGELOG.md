@@ -1,5 +1,10 @@
 # Pinefiles changelog
 
+## 1.1.002 - 2026-11-06
+- Folders can be opened by double-clicking anywhere on their row (size/date column too)
+- Pop-ups appear at the bottom-right of the Pinefiles window
+- Security check no longer fails when the hosts file has custom entries
+
 ## 1.1.001 - 2026-11-04
 - Mini-games no longer float over the tool: a slow tool offers them once in a pop-up and they open in the Mini-games tab
 - New game: the Chrome-style dino runner

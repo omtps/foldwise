@@ -1003,7 +1003,16 @@ def show_toast(A, text, label, action, title="Pinefiles health"):
     ttk.Button(row, text="Dismiss", command=t.destroy).pack(side="left")
     t.update_idletasks()
     sw_, sh_ = A.root.winfo_screenwidth(), A.root.winfo_screenheight()
-    t.geometry(f"+{sw_ - t.winfo_width() - 24}+{sh_ - t.winfo_height() - 72}")
+    x_, y_ = sw_ - t.winfo_width() - 24, sh_ - t.winfo_height() - 72  # default: bottom-right of the screen
+    try:
+        r_ = A.root
+        if r_.state() == "normal" and r_.winfo_viewable() and r_.winfo_rootx() > -10000:
+            # in the Pinefiles window: bottom-right corner, just above the status bar
+            x_ = r_.winfo_rootx() + r_.winfo_width() - t.winfo_width() - 20
+            y_ = r_.winfo_rooty() + r_.winfo_height() - t.winfo_height() - 44
+    except tk.TclError:
+        pass
+    t.geometry(f"+{x_}+{y_}")
     t.after(30000, lambda: t.winfo_exists() and t.destroy())
     return t
 

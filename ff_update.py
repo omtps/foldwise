@@ -17,10 +17,11 @@ import time
 import urllib.request
 from pathlib import Path
 
-APP_VERSION = "1.1.001"
+APP_VERSION = "1.1.002"
 
 # newest first; shown in Tools > Pinefiles > What's new and as a toast after an update (keep CHANGELOG.md in step)
 WHATS_NEW = [
+    ('1.1.002', ['Folders can be opened by double-clicking anywhere on their row (size/date column too)', 'Pop-ups appear at the bottom-right of the Pinefiles window', 'Security check no longer fails when the hosts file has custom entries']),
     ('1.1.001', ['Mini-games no longer float over the tool: a slow tool offers them once in a pop-up and they open in the Mini-games tab', 'New game: the Chrome-style dino runner', 'The Tools list is much shorter: related tools now share one entry and open as tabs inside it (for example Clean up holds the cleaner, duplicates, largest files, look-alike photos and the Recycle Bin), 41 tools in 15 entries', 'Customize is much shorter: sections fold (only the first is open), the options are grouped (Look in detail, Files, Safety, Search & background, Alerts & extras, Startup) and the search box still finds everything']),
     ('1.1', ['Pinefiles is the new name of Foldwise: your settings, index, tags, notes and shortcuts carry over by themselves', 'New tools: Tag manager, Photo timeline, Cloud files, Theme editor and a Keyboard shortcuts editor', 'Notes on files and folders (search them with note:), every folder remembers its own sort and view, alerts when a saved search finds new files', 'Never opens online-only files (Phone Link photos, OneDrive) by itself, so they are not downloaded; switch in Customize']),
     ('1.0.2-1', ["Nearby devices: the question 'X wants to send you files' now always shows on screen (it opened off-screen when Pinefiles was minimised) and a pop-up points at it", "Nearby devices works with the real LocalSend apps: Pinefiles now presents the certificate they require, and the new 'Check my network' button explains Public networks and firewall blocks", 'Receiving files switches itself off after 20 minutes (never in the middle of a transfer) and no longer starts by itself at launch', 'The Nearby devices page fits narrow windows: the Send button no longer hides to the right']),

@@ -130,7 +130,7 @@ def mq_in_zone(A, w, e):
 def mq_start(A, w, e):
     r0 = A.mq_row0(w)
     A.mq.update(on=True, w=w, x0=e.x, y0=e.y, ex=e.x, ey=e.y, moved=False, base=set(w.selection()) if e.state & 0x5 else set(), last=None,
-              c0=(e.y - r0[0]) if r0 else 0, job=None)
+              c0=(e.y - r0[0]) if r0 else 0, job=None, row=w.identify_row(e.y))
     w.focus_set()
 
 
@@ -181,7 +181,17 @@ def mq_end(A, e):
     A.mq_clear()
     was = A.mq["moved"]
     A.mq["on"] = False
-    if not was and not (e.state & 0x5):
+    row = A.mq.get("row")
+    if not was and row and w.exists(row):
+        # a plain click on a row's size/date column (or the blank part of its name cell) selects that row, so double-click opens it
+        if e.state & 0x4:
+            w.selection_toggle(row)
+        elif e.state & 0x1:
+            w.selection_add(row)
+        else:
+            w.selection_set(row)
+        w.focus(row)
+    elif not was and not (e.state & 0x5):
         w.selection_set(())
 
 
